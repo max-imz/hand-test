@@ -40,16 +40,16 @@
     <script>
         // 1. Initialisation Three.js
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-        camera.position.z = 2;
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 5; // Caméra reculée pour voir la main agrandie
         
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('container').appendChild(renderer.domElement);
 
         // Lumière
-        const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(1, 1, 1);
+        const light = new THREE.DirectionalLight(0xffffff, 1.5);
+        light.position.set(2, 2, 2);
         scene.add(light);
         scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
@@ -61,11 +61,11 @@
             './hand.gltf',
             (gltf) => {
                 handModel = gltf.scene;
-                handModel.scale.set(1, 1, 1);
+                handModel.scale.set(1, 1, 1); // Échelle agrandie
+                handModel.position.set(0, 0, 0); // Position initiale centrée
+                handModel.rotation.set(0, 0, Math.PI); // Rotation initiale : doigts vers le haut (180° sur Z)
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
-                
-                // Debug : Affiche la hiérarchie du modèle
                 console.log("Structure du modèle :", gltf);
             },
             undefined,
@@ -91,16 +91,16 @@
             if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
                 
-                // Position 3D (coordonnées normalisées)
-                const palmX = (landmarks[0].x - 0.5) * 3;
-                const palmY = -(landmarks[0].y - 0.5) * 3;
+                // Position 3D : inverser l'axe X pour corriger le mouvement gauche/droite
+                const palmX = -(landmarks[0].x - 0.5) * 6; // Ajout du signe négatif pour inverser X
+                const palmY = -(landmarks[0].y - 0.5) * 6; // Y reste inchangé (correct)
                 
                 handModel.position.set(palmX, palmY, 0);
                 
-                // Rotation basée sur l'orientation de la main
+                // Rotation : corriger l'orientation pour que les doigts pointent vers le haut
                 const wrist = landmarks[0];
                 const middle = landmarks[9];
-                handModel.rotation.z = Math.atan2(middle.y - wrist.y, middle.x - wrist.x) - Math.PI/2;
+                handModel.rotation.z = -(Math.atan2(middle.y - wrist.y, middle.x - wrist.x)) + Math.PI/2;
             }
         });
 
