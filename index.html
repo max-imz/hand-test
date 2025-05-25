@@ -64,7 +64,7 @@
                 handModel.scale.set(1, 1, 1); // Échelle demandée
                 handModel.position.set(0, 0, 0); // Position initiale centrée
                 // Rotation initiale pour aligner les doigts vers le haut
-                handModel.rotation.set(Math.PI, 0, 0); // 180° sur X
+                handModel.rotation.set(Math.PI, 0, 0); // 180° sur l’axe X
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
                 console.log("Structure du modèle :", gltf);
@@ -93,17 +93,17 @@
             if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
                 
-                // Position 3D (correcte, inchangée)
+                // Position 3D (inchangée, correcte)
                 const palmX = -(landmarks[0].x - 0.5) * 6; // Inverse X
                 const palmY = -(landmarks[0].y - 0.5) * 6; // Y correct
                 handModel.position.set(palmX, palmY, 0);
                 
-                // Rotation : aligner avec l'orientation de la main réelle
+                // Rotation : corriger l’inversion de la rotation Z
                 const wrist = landmarks[0];
                 const middle = landmarks[9];
                 const angle = Math.atan2(middle.y - wrist.y, middle.x - wrist.x);
-                handModel.rotation.z = angle - Math.PI / 2; // Ajustement pour aligner les doigts vers le haut
-                handModel.rotation.x = Math.PI; // Maintenir 180° sur X pour orientation correcte
+                handModel.rotation.z = -angle; // Inverse l’angle pour corriger la direction
+                handModel.rotation.x = Math.PI; // Maintien 180° sur X pour doigts vers le haut
                 
                 // Débogage
                 console.log("Landmarks:", { wristX: wrist.x, wristY: wrist.y, middleX: middle.x, middleY: middle.y });
