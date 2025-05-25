@@ -2,63 +2,67 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Main 3D (GLTF)</title>
+    <title>Main 3D - Contrôle Libre</title>
     <style>
-        body { 
-            margin: 0; 
-            overflow: hidden; 
-            background: white;
-        }
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
     </style>
 </head>
 <body>
+    <!-- Chargez Three.js + les extensions nécessaires -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    
     <script>
-        // 1. Initialiser la scène, la caméra et le rendu
+        // 1. Initialisation
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xffffff); // Fond blanc
+        scene.background = new THREE.Color(0x000000); // Fond noir pour l'immersion
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // 2. Ajouter des lumières
+        // 2. Ajoutez des lumières
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
         scene.add(ambientLight);
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
         directionalLight.position.set(1, 1, 1);
         scene.add(directionalLight);
 
-        // 3. Charger le modèle GLTF
+        // 3. Chargez la main (hand.gltf)
         const loader = new THREE.GLTFLoader();
         loader.load(
-            'hand.gltf', // Assurez-vous que le fichier est dans le même dossier
+            'hand.gltf',
             (gltf) => {
-                scene.add(gltf.scene);
-                console.log("Modèle chargé !");
-                
-                // Ajuster la position/échelle si nécessaire
-                gltf.scene.position.set(0, -1, 0); // Décaler vers le bas
-                gltf.scene.scale.set(1.5, 1.5, 1.5);
+                const hand = gltf.scene;
+                scene.add(hand);
+                hand.position.set(0, 0, 0); // Centrer la main
             },
             undefined,
-            (error) => {
-                console.error("Erreur de chargement :", error);
-            }
+            (error) => console.error("Erreur :", error)
         );
 
-        // 4. Positionner la caméra
+        // 4. Contrôles de la caméra (OrbitControls)
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; // Effet de fluidité
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 1; // Zoom min
+        controls.maxDistance = 10; // Zoom max
+
+        // 5. Positionnez la caméra
         camera.position.z = 3;
 
-        // 5. Animation
+        // 6. Animation
         function animate() {
             requestAnimationFrame(animate);
+            controls.update(); // Mise à jour des contrôles à chaque frame
             renderer.render(scene, camera);
         }
         animate();
 
-        // 6. Gérer le redimensionnement
+        // 7. Adaptez au redimensionnement
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
