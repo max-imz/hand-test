@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Main 3D (GLTF)</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: white;
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+    <script>
+        // 1. Initialiser la scène, la caméra et le rendu
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xffffff); // Fond blanc
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 2. Ajouter des lumières
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        // 3. Charger le modèle GLTF
+        const loader = new THREE.GLTFLoader();
+        loader.load(
+            'hand.gltf', // Assurez-vous que le fichier est dans le même dossier
+            (gltf) => {
+                scene.add(gltf.scene);
+                console.log("Modèle chargé !");
+                
+                // Ajuster la position/échelle si nécessaire
+                gltf.scene.position.set(0, -1, 0); // Décaler vers le bas
+                gltf.scene.scale.set(1.5, 1.5, 1.5);
+            },
+            undefined,
+            (error) => {
+                console.error("Erreur de chargement :", error);
+            }
+        );
+
+        // 4. Positionner la caméra
+        camera.position.z = 3;
+
+        // 5. Animation
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // 6. Gérer le redimensionnement
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
