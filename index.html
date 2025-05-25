@@ -15,7 +15,7 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
     <script>
-        // 1. Initialiser la scène, la caméra et le rendu
+        // 1. Initialiser la scÃ¨ne, la camÃ©ra et le rendu
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0xffffff); // Fond blanc
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -23,23 +23,23 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // 2. Ajouter des lumières
+        // 2. Ajouter des lumiÃ¨res
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
         scene.add(ambientLight);
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
         directionalLight.position.set(1, 1, 1);
         scene.add(directionalLight);
 
-        // 3. Charger le modèle GLTF
+        // 3. Charger le modÃ¨le GLTF
         const loader = new THREE.GLTFLoader();
         loader.load(
-            'hand.gltf', // Assurez-vous que le fichier est dans le même dossier
+            'hand.gltf', // Assurez-vous que le fichier est dans le mÃªme dossier
             (gltf) => {
                 scene.add(gltf.scene);
-                console.log("Modèle chargé !");
+                console.log("ModÃ¨le chargÃ© !");
                 
-                // Ajuster la position/échelle si nécessaire
-                gltf.scene.position.set(0, -1, 0); // Décaler vers le bas
+                // Ajuster la position/Ã©chelle si nÃ©cessaire
+                gltf.scene.position.set(0, -1, 0); // DÃ©caler vers le bas
                 gltf.scene.scale.set(1.5, 1.5, 1.5);
             },
             undefined,
@@ -48,7 +48,7 @@
             }
         );
 
-        // 4. Positionner la caméra
+        // 4. Positionner la camÃ©ra
         camera.position.z = 3;
 
         // 5. Animation
@@ -58,7 +58,7 @@
         }
         animate();
 
-        // 6. Gérer le redimensionnement
+        // 6. GÃ©rer le redimensionnement
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
