@@ -63,7 +63,9 @@
                 handModel = gltf.scene;
                 handModel.scale.set(1, 1, 1); // Échelle agrandie
                 handModel.position.set(0, 0, 0); // Position initiale centrée
-                handModel.rotation.set(0, 0, Math.PI); // Rotation initiale : doigts vers le haut (180° sur Z)
+                // Rotation initiale pour que les doigts pointent vers le haut
+                handModel.rotation.set(Math.PI, 0, 0); // 180° sur l'axe X (tester si nécessaire)
+                // Alternative : handModel.rotation.set(0, Math.PI, 0); // 180° sur l'axe Y
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
                 console.log("Structure du modèle :", gltf);
@@ -84,23 +86,30 @@
             maxNumHands: 1,
             modelComplexity: 1,
             minDetectionConfidence: 0.7,
-            minTrackingConfidence: 0.7
+            minTrackingConfidence: 0.7,
+            selfieMode: false // Désactiver le mode miroir pour la webcam
         });
 
         hands.onResults((results) => {
             if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
                 
-                // Position 3D : inverser l'axe X pour corriger le mouvement gauche/droite
-                const palmX = -(landmarks[0].x - 0.5) * 6; // Ajout du signe négatif pour inverser X
-                const palmY = -(landmarks[0].y - 0.5) * 6; // Y reste inchangé (correct)
+                // Position 3D : inverser l'axe X pour corriger gauche/droite
+                const palmX = -(landmarks[0].x - 0.5) * 6; // Signe négatif pour inverser X
+                const palmY = -(landmarks[0].y - 0.5) * 6; // Y reste correct
                 
                 handModel.position.set(palmX, palmY, 0);
                 
-                // Rotation : corriger l'orientation pour que les doigts pointent vers le haut
+                // Rotation : corriger pour que les doigts pointent vers le haut
                 const wrist = landmarks[0];
                 const middle = landmarks[9];
-                handModel.rotation.z = -(Math.atan2(middle.y - wrist.y, middle.x - wrist.x)) + Math.PI/2;
+                const angle = Math.atan2(middle.y - wrist.y, middle.x - wrist.x);
+                handModel.rotation.z = angle + Math.PI; // Ajustement pour doigts vers le haut
+                
+                // Débogage : afficher les valeurs pour vérifier
+                console.log("Landmarks:", { wristX: wrist.x, wristY: wrist.y, middleX: middle.x, middleY: middle.y });
+                console.log("Position:", { palmX, palmY });
+                console.log("Rotation Z:", handModel.rotation.z);
             }
         });
 
@@ -114,7 +123,8 @@
                 }
             },
             width: 640,
-            height: 480
+            height: 480,
+            facingMode: 'user' // Webcam frontale, non mise en miroir
         });
 
         cameraMP.start().catch(e => {
