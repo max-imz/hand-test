@@ -61,7 +61,7 @@
             './hand.gltf',
             (gltf) => {
                 handModel = gltf.scene;
-                handModel.scale.set(0.1, 0.1, 0.1);
+                handModel.scale.set(1, 1, 1);
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
                 
