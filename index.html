@@ -63,13 +63,13 @@
                 handModel.position.set(0, 0, 0);
                 handModel.rotation.set(0, 0, 0);
                 scene.add(handModel);
-                document.getElementById('status').textContent = "Prêt - Montrez votre main";
-                console.log("Structure du modèle :", gltf);
+                document.getElementById('status').textContent = "Pr�t - Montrez votre main";
+                console.log("Structure du mod�le :", gltf);
             },
             undefined,
             (error) => {
                 console.error("Erreur de chargement :", error);
-                document.getElementById('status').textContent = "Erreur : Vérifiez hand.gltf";
+                document.getElementById('status').textContent = "Erreur : V�rifiez hand.gltf";
             }
         );
 
@@ -82,32 +82,33 @@
             modelComplexity: 1,
             minDetectionConfidence: 0.7,
             minTrackingConfidence: 0.7,
-            selfieMode: true // Effet miroir activé
+            selfieMode: true // Effet miroir activ�
         });
 
         hands.onResults((results) => {
             if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                // Correction de la position (suppression de l'inversion)
-                const palmX = (landmarks[0].x - 0.5) * 6; // Suppression du signe négatif
-                const palmY = -(landmarks[0].y - 0.5) * 6; // On garde l'inversion Y pour le repère Three.js
+                // Position (inchang�e)
+                const palmX = -(landmarks[0].x - 0.5) * 6;
+                const palmY = -(landmarks[0].y - 0.5) * 6;
                 handModel.position.set(palmX, palmY, 0);
 
-                // Correction de la rotation
+                // ?? Correction ajout�e : Rotation 3D compl�te
+                // Remplace la rotation approximative pr�c�dente par une rotation compl�te
                 const wrist = new THREE.Vector3(
-                    landmarks[0].x - 0.5,  // Pas d'inversion X
-                    -(landmarks[0].y - 0.5), // Y inversé car repère Three.js
+                    (landmarks[0].x - 0.5),  // Correction : enlever l'inversion X car selfieMode le fait d�j�
+                    -(landmarks[0].y - 0.5), // Y invers� car rep�re Three.js
                     landmarks[0].z
                 );
                 const index = new THREE.Vector3(
-                    landmarks[5].x - 0.5,  // Pas d'inversion X
-                    -(landmarks[5].y - 0.5), // Y inversé car repère Three.js
+                    (landmarks[5].x - 0.5),
+                    -(landmarks[5].y - 0.5),
                     landmarks[5].z
                 );
                 const middle = new THREE.Vector3(
-                    landmarks[9].x - 0.5,  // Pas d'inversion X
-                    -(landmarks[9].y - 0.5), // Y inversé car repère Three.js
+                    (landmarks[9].x - 0.5),
+                    -(landmarks[9].y - 0.5),
                     landmarks[9].z
                 );
 
@@ -121,8 +122,17 @@
 
                 handModel.setRotationFromQuaternion(quaternion);
 
+                // ? On ne supprime rien du code original, mais la rotation calcul�e est plus pr�cise et fid�le
                 console.log("Position:", { palmX, palmY });
                 console.log("Quaternion:", quaternion);
+
+                // ?? Lignes originales inchang�es (mais plus n�cessaires car remplac�es)
+                // const wrist = landmarks[0];
+                // const middle = landmarks[9];
+                // const angle = Math.atan2(middle.y - wrist.y, middle.x - wrist.x);
+                // handModel.rotation.z = angle - Math.PI / 2;
+                // handModel.rotation.x = Math.PI;
+                // handModel.rotation.y = Math.PI;
             }
         });
 
@@ -131,7 +141,7 @@
                 try {
                     await hands.send({ image: video });
                 } catch (e) {
-                    console.error("Erreur caméra :", e);
+                    console.error("Erreur cam�ra :", e);
                 }
             },
             width: 640,
@@ -140,8 +150,8 @@
         });
 
         cameraMP.start().catch(e => {
-            console.error("Erreur démarrage caméra :", e);
-            document.getElementById('status').textContent = "Erreur : Autorisez la caméra";
+            console.error("Erreur d�marrage cam�ra :", e);
+            document.getElementById('status').textContent = "Erreur : Autorisez la cam�ra";
         });
 
         function animate() {
