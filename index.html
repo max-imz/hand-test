@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Main 3D Tracking</title>
+    <title>Main 3D Tracking Miroir</title>
     <style>
         body, html {
             margin: 0; padding: 0; overflow: hidden;
@@ -61,8 +61,7 @@
             './hand.gltf',
             (gltf) => {
                 handModel = gltf.scene;
-                handModel.scale.set(1, 1, 1);
-                handModel.position.set(0, 0, 0);
+                handModel.scale.set(0.1, 0.1, 0.1); // Ajustez cette valeur selon la taille de votre modèle
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
             },
@@ -89,38 +88,67 @@
         hands.onResults((results) => {
             if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
+                const handedness = results.multiHandedness[0].label; // 'Left' ou 'Right'
 
                 // Position (suivi du poignet)
                 const wrist = landmarks[0];
-                const palmX = (wrist.x - 0.5) * 6;
-                const palmY = -(wrist.y - 0.5) * 6;
-                const lerpFactor = 0.3;
-                handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, lerpFactor);
-                handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
-                handModel.position.z = 0;
+                const palmX = (wrist.x - 0.5) * 10; // Augmenté le facteur pour plus de sensibilité
+                const palmY = -(wrist.y - 0.5) * 10;
+                
+                // Application directe sans interpolation
+                handModel.position.set(palmX, palmY, 0);
 
-                // Orientation complète de la paume
+                // Orientation - méthode améliorée
                 const indexBase = landmarks[5];  
                 const pinkyBase = landmarks[17]; 
+                const middleBase = landmarks[9];
 
-                const vWrist = new THREE.Vector3(wrist.x, -wrist.y, wrist.z);
-                const vIndex = new THREE.Vector3(indexBase.x, -indexBase.y, indexBase.z);
-                const vPinky = new THREE.Vector3(pinkyBase.x, -pinkyBase.y, pinkyBase.z);
+                // Vecteurs pour calculer l'orientation
+                const wristPos = new THREE.Vector3(wrist.x, wrist.y, wrist.z);
+                const indexPos = new THREE.Vector3(indexBase.x, indexBase.y, indexBase.z);
+                const pinkyPos = new THREE.Vector3(pinkyBase.x, pinkyBase.y, pinkyBase.z);
+                const middlePos = new THREE.Vector3(middleBase.x, middleBase.y, middleBase.z);
 
-                // Repère main : X = Pinky-Index, Y = normal, Z = Pinky-Wrist
-                const xDir = new THREE.Vector3().subVectors(vPinky, vIndex).normalize();
-                const zDir = new THREE.Vector3().subVectors(vPinky, vWrist).normalize();
-                const yDir = new THREE.Vector3().crossVectors(zDir, xDir).normalize();
-                zDir.crossVectors(xDir, yDir).normalize();
-
-                const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
-                const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
-
-                handModel.quaternion.slerp(quaternion, lerpFactor);
+                // Calcul des vecteurs directeurs
+                const palmNormal = new THREE.Vector3();
+                const palmDirection = new THREE.Vector3();
+                
+                // Vecteur latéral (pinky to index)
+                const lateral = new THREE.Vector3().subVectors(pinkyPos, indexPos);
+                
+                // Vecteur médian (wrist to middle)
+                const median = new THREE.Vector3().subVectors(middlePos, wristPos);
+                
+                // Normal de la paume (cross product)
+                palmNormal.crossVectors(lateral, median).normalize();
+                
+                // Direction de la paume (normalisé)
+                palmDirection.copy(median).normalize();
+                
+                // Vecteur latéral orthogonal
+                const orthogonal = new THREE.Vector3().crossVectors(palmNormal, palmDirection).normalize();
+                
+                // Création de la matrice de rotation
+                const rotationMatrix = new THREE.Matrix4().makeBasis(
+                    new THREE.Vector3(orthogonal.x, -orthogonal.y, orthogonal.z),
+                    new THREE.Vector3(palmNormal.x, -palmNormal.y, palmNormal.z),
+                    new THREE.Vector3(palmDirection.x, -palmDirection.y, palmDirection.z)
+                );
+                
+                // Inversion pour l'effet miroir
+                if (handedness === 'Right') {
+                    rotationMatrix.scale(new THREE.Vector3(-1, 1, 1));
+                } else {
+                    rotationMatrix.scale(new THREE.Vector3(1, 1, -1));
+                }
+                
+                // Application de la rotation
+                handModel.quaternion.setFromRotationMatrix(rotationMatrix);
             }
         });
 
         // Caméra
+        const video = document.getElementById('video');
         const cameraMP = new Camera(video, {
             onFrame: async () => {
                 try {
