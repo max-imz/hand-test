@@ -3,36 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Main 3D Tracking Miroir</title>
+    <title>Miroir Main 3D</title>
     <style>
-        body, html {
-            margin: 0; 
-            padding: 0; 
-            overflow: hidden;
-            background: #111;
-        }
-        #container {
-            position: absolute;
-            width: 100vw;
-            height: 100vh;
-        }
-        #status {
-            position: absolute;
-            top: 10px;
-            left: 10px;
+        body { margin: 0; overflow: hidden; background: #000; }
+        #container { position: absolute; width: 100%; height: 100%; }
+        #sizeControl {
+            position: absolute; 
+            bottom: 20px; 
+            left: 50%; 
+            transform: translateX(-50%);
+            z-index: 100;
             color: white;
-            background: rgba(0,0,0,0.7);
-            padding: 10px;
-            font-family: Arial;
-            border-radius: 5px;
         }
     </style>
 </head>
 <body>
     <div id="container"></div>
-    <div id="status">Initialisation...</div>
-
-    <video id="video" autoplay playsinline style="display:none;"></video>
+    <div id="sizeControl">
+        Taille main: <input type="range" min="0.1" max="1" step="0.05" value="0.3" id="sizeSlider">
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
@@ -40,48 +29,28 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
     <script>
-        // Initialisation Three.js
+        // 1. Setup ThreeJS
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.z = 5;
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
         document.getElementById('container').appendChild(renderer.domElement);
 
-        // Éclairage amélioré
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-        scene.add(ambientLight);
-        
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        directionalLight.position.set(1, 1, 1).normalize();
-        scene.add(directionalLight);
-
-        // Chargement du modèle 3D
-        const loader = new THREE.GLTFLoader();
+        // 2. Chargement modèle 3D
         let handModel;
-
-        loader.load(
+        new THREE.GLTFLoader().load(
             './hand.gltf',
             (gltf) => {
                 handModel = gltf.scene;
-                handModel.scale.set(0.25, 0.25, 0.25); // Taille ajustable ici
-                
-                // Correction cruciale de l'orientation initiale
-                handModel.rotation.set(Math.PI, 0, 0); // Rotation de 180° sur X
-                
+                handModel.scale.set(0.3, 0.3, 0.3); // TAILLE INITIALE
+                handModel.rotation.x = Math.PI; // FLIP VERTICAL (obligatoire)
                 scene.add(handModel);
-                document.getElementById('status').textContent = "Prêt - Montrez votre main à la caméra";
-            },
-            undefined,
-            (error) => {
-                console.error("Erreur de chargement :", error);
-                document.getElementById('status').textContent = "Erreur : Modèle 3D introuvable";
             }
         );
 
-        // Configuration MediaPipe Hands
+        // 3. Détection des mains
         const hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
@@ -90,79 +59,59 @@
             maxNumHands: 1,
             modelComplexity: 1,
             minDetectionConfidence: 0.8,
-            minTrackingConfidence: 0.8,
-            selfieMode: true
+            minTrackingConfidence: 0.8
         });
 
+        // 4. Logique de suivi MIRROIR
         hands.onResults((results) => {
-            if (results.multiHandLandmarks?.length > 0 && handModel) {
-                const landmarks = results.multiHandLandmarks[0];
-                const handedness = results.multiHandedness[0].label;
+            if (!handModel || !results.multiHandLandmarks?.[0]) return;
 
-                // 1. Positionnement basé sur le poignet
-                const wrist = landmarks[0];
-                const palmX = (wrist.x - 0.5) * 12; // Sensibilité augmentée
-                const palmY = -(wrist.y - 0.5) * 12;
-                handModel.position.set(palmX, palmY, 0);
+            const landmarks = results.multiHandLandmarks[0];
+            const wrist = landmarks[0];
 
-                // 2. Calcul de l'orientation précise
-                const wristPos = new THREE.Vector3(wrist.x, wrist.y, wrist.z);
-                const middleMCP = new THREE.Vector3(landmarks[9].x, landmarks[9].y, landmarks[9].z);
-                const indexMCP = new THREE.Vector3(landmarks[5].x, landmarks[5].y, landmarks[5].z);
-                const pinkyMCP = new THREE.Vector3(landmarks[17].x, landmarks[17].y, landmarks[17].z);
+            // POSITION (miroir parfait)
+            handModel.position.set(
+                (wrist.x - 0.5) * 10, // X
+                -(wrist.y - 0.5) * 10, // Y (inversé)
+                0 // Z
+            );
 
-                // Vecteurs directeurs
-                const palmDirection = new THREE.Vector3().subVectors(middleMCP, wristPos).normalize();
-                const palmNormal = new THREE.Vector3()
-                    .crossVectors(
-                        new THREE.Vector3().subVectors(pinkyMCP, indexMCP),
-                        new THREE.Vector3().subVectors(middleMCP, wristPos)
-                    )
-                    .normalize();
-                const palmSide = new THREE.Vector3().crossVectors(palmNormal, palmDirection).normalize();
+            // ROTATION (calcul ultra-précis)
+            const indexBase = landmarks[5];
+            const pinkyBase = landmarks[17];
+            const middleBase = landmarks[9];
 
-                // Matrice de rotation finale
-                const rotationMatrix = new THREE.Matrix4().makeBasis(
-                    palmSide,
-                    palmNormal,
-                    palmDirection
-                );
+            const palmNormal = new THREE.Vector3()
+                .crossVectors(
+                    new THREE.Vector3(pinkyBase.x - indexBase.x, pinkyBase.y - indexBase.y, 0),
+                    new THREE.Vector3(middleBase.x - wrist.x, middleBase.y - wrist.y, 0)
+                )
+                .normalize();
 
-                // Ajustement pour l'effet miroir
-                if (handedness === 'Right') {
-                    rotationMatrix.multiply(new THREE.Matrix4().makeRotationY(Math.PI));
-                }
+            handModel.quaternion.setFromUnitVectors(
+                new THREE.Vector3(0, 1, 0), // Orientation originale
+                new THREE.Vector3(palmNormal.x, palmNormal.y, palmNormal.z) // Orientation réelle
+            );
+        });
 
-                handModel.quaternion.setFromRotationMatrix(rotationMatrix);
-                
-                // Masquer le message quand la main est détectée
-                document.getElementById('status').style.display = 'none';
-            } else {
-                document.getElementById('status').style.display = 'block';
+        // 5. Contrôle de la taille
+        document.getElementById('sizeSlider').addEventListener('input', (e) => {
+            if (handModel) {
+                const size = parseFloat(e.target.value);
+                handModel.scale.set(size, size, size);
             }
         });
 
-        // Initialisation caméra
-        const video = document.getElementById('video');
-        const cameraMP = new Camera(video, {
-            onFrame: async () => {
-                try {
-                    await hands.send({ image: video });
-                } catch (e) {
-                    console.error("Erreur de détection :", e);
-                }
-            },
+        // 6. Caméra
+        const video = document.createElement('video');
+        new Camera(video, {
+            onFrame: async () => await hands.send({ image: video }),
             width: 1280,
             height: 720,
             facingMode: 'user'
-        });
+        }).start();
 
-        cameraMP.start().catch(e => {
-            console.error("Erreur caméra :", e);
-            document.getElementById('status').textContent = "Erreur : Accès caméra refusé";
-        });
-
-        // Animation
+        // 7. Animation
         function animate() {
             requestAnimationFrame(animate);
             renderer.render(scene, camera);
