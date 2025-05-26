@@ -20,7 +20,7 @@
             left: 10px;
             color: white;
             background: rgba(0,0,0,0.7);
-            padding: 10px;
+            paddingttc: 10px;
             font-family: Arial;
         }
     </style>
@@ -64,7 +64,7 @@
                 handModel.scale.set(1, 1, 1);
                 handModel.position.set(0, 0, 0);
                 scene.add(handModel);
-                document.getElementById('status').textContent = "Prêt - Montrez votre main";
+                document.getElementById('status').textContent = "Prêt - Montrez votre main droite";
             },
             undefined,
             (error) => {
@@ -81,14 +81,14 @@
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
-            minDetectionConfidence: 0.8, // Increased for more reliable detection
-            minTrackingConfidence: 0.8, // Increased for more reliable tracking
+            minDetectionConfidence: 0.85, // Stricter threshold
+            minTrackingConfidence: 0.85, // Stricter threshold
             selfieMode: true
         });
 
         // Variables for smoothing
         const landmarkHistory = [];
-        const HISTORY_SIZE = 5; // Number of frames to average over
+        const HISTORY_SIZE = 5;
         let lastValidQuaternion = new THREE.Quaternion();
         let lastValidPosition = new THREE.Vector3();
 
@@ -97,22 +97,31 @@
                 const landmarks = results.multiHandLandmarks[0];
                 const handedness = results.multiHandedness[0];
 
-                // Check detection confidence
-                if (handedness.score < 0.8) {
-                    document.getElementById('status').textContent = "Détection faible - Stabilisez votre main";
-                    return; // Skip update if confidence is too low
+                // Ensure only the right hand is detected (change to "Left" if you want the left hand)
+                if (handedness.label !== "Right") {
+                    document.getElementById('status').textContent = "Veuillez montrer votre main droite";
+                    return;
                 }
 
-                // Log confidence for debugging
-                console.log("Detection confidence:", handedness.score);
+                // Check detection confidence
+                if (handedness.score < 0.85) {
+                    document.getElementById('status').textContent = "Détection faible - Stabilisez votre main droite";
+                    return;
+                }
 
-                // Smooth landmarks by averaging over the last few frames
+                // Region of Interest (ROI) Check: Ensure the hand is roughly centered in the frame
+                const wrist = landmarks[0];
+                if (wrist.x < 0.2 || wrist.x > 0.8 || wrist.y < 0.2 || wrist.y > 0.8) {
+                    document.getElementById('status').textContent = "Main hors de la zone centrale";
+                    return;
+                }
+
+                // Smooth landmarks
                 landmarkHistory.push(landmarks);
                 if (landmarkHistory.length > HISTORY_SIZE) {
                     landmarkHistory.shift();
                 }
 
-                // Compute averaged landmarks
                 const averagedLandmarks = [];
                 for (let i = 0; i < landmarks.length; i++) {
                     const avgPoint = { x: 0, y: 0, z: 0 };
@@ -128,22 +137,22 @@
                 }
 
                 // Position (suivi du poignet)
-                const wrist = averagedLandmarks[0];
-                const palmX = (wrist.x - 0.5) * 6;
-                const palmY = -(wrist.y - 0.5) * 6;
-                const lerpFactor = 0.5; // Increased for more smoothing
+                const wristAvg = averagedLandmarks[0];
+                const palmX = (wristAvg.x - 0.5) * 6;
+                const palmY = -(wristAvg.y - 0.5) * 6;
+                const lerpFactor = 0.6; // Increased for more smoothing
                 lastValidPosition.x = THREE.MathUtils.lerp(lastValidPosition.x, palmX, lerpFactor);
                 lastValidPosition.y = THREE.MathUtils.lerp(lastValidPosition.y, palmY, lerpFactor);
                 lastValidPosition.z = 0;
                 handModel.position.copy(lastValidPosition);
 
-                // Orientation complète de la paume
-                const indexBase = averagedLandmarks[5]; // Base of index finger
-                const pinkyBase = averagedLandmarks[17]; // Base of pinky finger
-                const middleTip = averagedLandmarks[12]; // Tip of middle finger
+                // Orientation
+                const indexBase = averagedLandmarks[5];
+                const pinkyBase = averagedLandmarks[17];
+                const middleTip = averagedLandmarks[12];
 
-                // Adjust for selfieMode (mirrored X-axis)
-                const vWrist = new THREE.Vector3(1 - wrist.x, wrist.y, wrist.z);
+                // Adjust for selfieMode
+                const vWrist = new THREE.Vector3(1 - wristAvg.x, wristAvg.y, wristAvg.z);
                 const vIndex = new THREE.Vector3(1 - indexBase.x, indexBase.y, indexBase.z);
                 const vPinky = new THREE.Vector3(1 - pinkyBase.x, pinkyBase.y, pinkyBase.z);
                 const vMiddleTip = new THREE.Vector3(1 - middleTip.x, middleTip.y, middleTip.z);
@@ -154,7 +163,7 @@
                 const zDir = new THREE.Vector3().crossVectors(xDir, yDir).normalize(); // Palm normal
                 xDir.crossVectors(yDir, zDir).normalize();
 
-                // Create a rotation matrix
+                // Create rotation matrix
                 const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
 
                 // Convert to quaternion
@@ -164,14 +173,13 @@
                 const correction = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
                 quaternion.multiply(correction);
 
-                // Smooth the rotation
+                // Smooth rotation
                 lastValidQuaternion.slerp(quaternion, lerpFactor);
                 handModel.quaternion.copy(lastValidQuaternion);
 
-                // Update status
-                document.getElementById('status').textContent = "Main détectée";
+                document.getElementById('status').textContent = "Main droite détectée";
             } else {
-                document.getElementById('status').textContent = "Aucune main détectée";
+                document.getElementById('status').textContent = "Aucune main droite détectée";
             }
         });
 
