@@ -1,8 +1,8 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>  
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Main 3D Tracking</title>
     <style>
         body, html {
@@ -113,8 +113,17 @@
                 const yDir = new THREE.Vector3().crossVectors(zDir, xDir).normalize();
                 zDir.crossVectors(xDir, yDir).normalize();
 
+                // On crée la matrice de rotation avec les axes calculés
                 const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
                 const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
+
+                // Rotation supplémentaire pour passer la main en verticale (doigts vers le haut)
+                // Ici on fait une rotation autour de l'axe X de -90 degrés ( -π/2 )
+                const correctionQuat = new THREE.Quaternion();
+                correctionQuat.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+
+                // Combine la rotation détectée avec la correction verticale
+                quaternion.multiply(correctionQuat);
 
                 handModel.quaternion.slerp(quaternion, lerpFactor);
             }
