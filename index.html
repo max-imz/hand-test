@@ -1,1 +1,219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Main 3D Tracking</title>
+    <style>
+        body, html {
+            margin: 0; padding: 0; overflow: hidden;
+            background: #111;
+        }
+        #container {
+            position: absolute;
+            width: 100vw;
+            height: 100vh;
+        }
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            font-family: Arial;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <div id="status">Initialisation...</div>
 
+    <video id="video" autoplay playsinline style="display:none;"></video>
+
+    <!-- Three.js + MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+    <script>
+        // Initialisation Three.js
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 5;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('container').appendChild(renderer.domElement);
+
+        // Lumières
+        const light = new THREE.DirectionalLight(0xffffff, 1.5);
+        light.position.set(2, 2, 2);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+        // Chargement du modèle 3D
+        const loader = new THREE.GLTFLoader();
+        let handModel;
+
+        loader.load(
+            './hand.gltf',
+            (gltf) => {
+                handModel = gltf.scene;
+                handModel.scale.set(1, 1, 1);
+                handModel.position.set(0, 0, 0);
+                scene.add(handModel);
+                document.getElementById('status').textContent = "Prêt - Montrez votre main";
+            },
+            undefined,
+            (error) => {
+                console.error("Erreur de chargement :", error);
+                document.getElementById('status').textContent = "Erreur : Vérifiez hand.gltf";
+            }
+        );
+
+        // MediaPipe Hands
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.85,
+            minTrackingConfidence: 0.85,
+            selfieMode: true
+        });
+
+        // Variables for smoothing
+        const landmarkHistory = [];
+        const HISTORY_SIZE = 5;
+        let lastValidQuaternion = new THREE.Quaternion();
+        let lastValidPosition = new THREE.Vector3();
+
+        hands.onResults((results) => {
+            if (results.multiHandLandmarks?.length > 0 && handModel) {
+                const landmarks = results.multiHandLandmarks[0];
+                const handedness = results.multiHandedness[0];
+
+                // Check detection confidence
+                if (handedness.score < 0.85) {
+                    document.getElementById('status').textContent = "Détection faible - Stabilisez votre main";
+                    return;
+                }
+
+                // Region of Interest (ROI) Check
+                const wrist = landmarks[0];
+                if (wrist.x < 0.2 || wrist.x > 0.8 || wrist.y < 0.2 || wrist.y > 0.8) {
+                    document.getElementById('status').textContent = "Main hors de la zone centrale";
+                    return;
+                }
+
+                // Smooth landmarks
+                landmarkHistory.push(landmarks);
+                if (landmarkHistory.length > HISTORY_SIZE) {
+                    landmarkHistory.shift();
+                }
+
+                const averagedLandmarks = [];
+                for (let i = 0; i < landmarks.length; i++) {
+                    const avgPoint = { x: 0, y: 0, z: 0 };
+                    for (const frame of landmarkHistory) {
+                        avgPoint.x += frame[i].x;
+                        avgPoint.y += frame[i].y;
+                        avgPoint.z += frame[i].z || 0;
+                    }
+                    avgPoint.x /= landmarkHistory.length;
+                    avgPoint.y /= landmarkHistory.length;
+                    avgPoint.z /= landmarkHistory.length;
+                    averagedLandmarks.push(avgPoint);
+                }
+
+                // Position (suivi du poignet)
+                const wristAvg = averagedLandmarks[0];
+                const palmX = (wristAvg.x - 0.5) * 6;
+                const palmY = -(wristAvg.y - 0.5) * 6;
+                const lerpFactor = 0.6;
+                lastValidPosition.x = THREE.MathUtils.lerp(lastValidPosition.x, palmX, lerpFactor);
+                lastValidPosition.y = THREE.MathUtils.lerp(lastValidPosition.y, palmY, lerpFactor);
+                lastValidPosition.z = 0;
+                handModel.position.copy(lastValidPosition);
+
+                // Orientation
+                const indexBase = averagedLandmarks[5];
+                const pinkyBase = averagedLandmarks[17];
+                const middleTip = averagedLandmarks[12];
+
+                // Adjust for selfieMode
+                const vWrist = new THREE.Vector3(1 - wristAvg.x, wristAvg.y, wristAvg.z);
+                const vIndex = new THREE.Vector3(1 - indexBase.x, indexBase.y, indexBase.z);
+                const vPinky = new THREE.Vector3(1 - pinkyBase.x, pinkyBase.y, pinkyBase.z);
+                const vMiddleTip = new THREE.Vector3(1 - middleTip.x, middleTip.y, middleTip.z);
+
+                // Define the hand's coordinate system
+                const yDir = new THREE.Vector3().subVectors(vMiddleTip, vWrist).normalize(); // Fingers direction
+                const xDir = new THREE.Vector3().subVectors(vPinky, vIndex).normalize(); // Across the palm
+                const zDir = new THREE.Vector3().crossVectors(xDir, yDir).normalize(); // Palm normal
+                xDir.crossVectors(yDir, zDir).normalize();
+
+                // Create rotation matrix
+                const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
+
+                // Convert to quaternion
+                const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
+
+                // Step 1: Base correction to align the model with the detected hand
+                const baseCorrection = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0));
+
+                // Step 2: Rotate to make the palm face downward (toward the bottom of the screen)
+                // Rotate around the model's X-axis by 90 degrees (Math.PI / 2)
+                const palmDownCorrection = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
+
+                // Combine rotations
+                quaternion.multiply(baseCorrection).multiply(palmDownCorrection);
+
+                // Smooth rotation
+                lastValidQuaternion.slerp(quaternion, lerpFactor);
+                handModel.quaternion.copy(lastValidQuaternion);
+
+                document.getElementById('status').textContent = "Main détectée";
+            } else {
+                document.getElementById('status').textContent = "Aucune main détectée";
+            }
+        });
+
+        // Caméra
+        const cameraMP = new Camera(video, {
+            onFrame: async () => {
+                try {
+                    await hands.send({ image: video });
+                } catch (e) {
+                    console.error("Erreur caméra :", e);
+                }
+            },
+            width: 640,
+            height: 480,
+            facingMode: 'user'
+        });
+
+        cameraMP.start().catch(e => {
+            console.error("Erreur démarrage caméra :", e);
+            document.getElementById('status').textContent = "Erreur : Autorisez la caméra";
+        });
+
+        // Animation
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
