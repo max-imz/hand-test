@@ -39,7 +39,7 @@
         // Initialisation Three.js
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 3;
+        camera.position.z = 3; // Ajusté pour une vue rapprochée
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -79,9 +79,9 @@
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
-            minDetectionConfidence: 0.8, // Augmenter pour plus de précision
+            minDetectionConfidence: 0.8, // Précision accrue
             minTrackingConfidence: 0.8,
-            selfieMode: true // Mode miroir activé
+            selfieMode: true // Mode miroir de MediaPipe
         });
 
         hands.onResults((results) => {
@@ -90,25 +90,25 @@
 
                 // Position (suivi du poignet)
                 const wrist = landmarks[0];
-                const palmX = -(wrist.x - 0.5) * 5; // Inverser X pour effet miroir
-                const palmY = -(wrist.y - 0.5) * 5;
-                const palmZ = (wrist.z) * 2; // Ajuster la profondeur
-                const lerpFactor = 0.5; // Plus réactif pour un suivi précis
+                const palmX = -(wrist.x - 0.5) * 6; // Inverser X pour effet miroir
+                const palmY = -(wrist.y - 0.5) * 6; // Inverser Y pour correspondre à l'espace 3D
+                const palmZ = wrist.z * 3; // Ajuster la profondeur
+                const lerpFactor = 0.7; // Plus réactif pour minimiser le décalage
 
                 handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, lerpFactor);
                 handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
                 handModel.position.z = THREE.MathUtils.lerp(handModel.position.z, palmZ, lerpFactor);
 
-                // Orientation complète de la paume
+                // Orientation complète
                 const indexBase = landmarks[5];  // Base de l'index
                 const pinkyBase = landmarks[17]; // Base de l'auriculaire
                 const thumbBase = landmarks[2];  // Base du pouce
 
-                // Vecteurs pour la main
-                const vWrist = new THREE.Vector3(wrist.x, wrist.y, wrist.z);
-                const vIndex = new THREE.Vector3(indexBase.x, indexBase.y, indexBase.z);
-                const vPinky = new THREE.Vector3(pinkyBase.x, pinkyBase.y, pinkyBase.z);
-                const vThumb = new THREE.Vector3(thumbBase.x, thumbBase.y, thumbBase.z);
+                // Vecteurs dans l'espace caméra (inverser Y pour Three.js)
+                const vWrist = new THREE.Vector3(wrist.x, -wrist.y, wrist.z);
+                const vIndex = new THREE.Vector3(indexBase.x, -indexBase.y, indexBase.z);
+                const vPinky = new THREE.Vector3(pinkyBase.x, -pinkyBase.y, pinkyBase.z);
+                const vThumb = new THREE.Vector3(thumbBase.x, -thumbBase.y, thumbBase.z);
 
                 // Calcul des axes pour un repère précis
                 const xDir = new THREE.Vector3().subVectors(vPinky, vIndex).normalize(); // Axe X : Pinky -> Index
@@ -116,33 +116,42 @@
                 const yDir = new THREE.Vector3().crossVectors(zDir, xDir).normalize(); // Axe Y : Perpendiculaire
                 zDir.crossVectors(xDir, yDir).normalize(); // Recalculer Z pour orthogonalité
 
-                // Créer la matrice de rotation
+                // Matrice de rotation
                 const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
-                const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
+                let quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
 
-                // Appliquer un effet miroir (inverser l'axe X)
+                // Appliquer l'effet miroir (inverser X)
                 const mirrorMatrix = new THREE.Matrix4().makeRotationY(Math.PI); // Rotation de 180° autour de Y
                 const mirroredQuaternion = new THREE.Quaternion().setFromRotationMatrix(mirrorMatrix);
-                quaternion.multiply(mirroredQuaternion); // Combiner pour effet miroir
+                quaternion.multiply(mirroredQuaternion);
 
                 handModel.quaternion.slerp(quaternion, lerpFactor);
 
-                // Animation des doigts (si le modèle le permet)
+                // Animation des doigts (si le modèle a des bones)
                 if (handModel.getObjectByName) {
-                    // Exemple : ajuster l'angle de l'index (landmarks 5, 6, 7, 8)
-                    const indexTip = landmarks[8];
-                    const indexMCP = landmarks[5];
-                    const vIndexTip = new THREE.Vector3(indexTip.x, indexTip.y, indexTip.z);
-                    const vIndexMCP = new THREE.Vector3(indexMCP.x, indexMCP.y, indexMCP.z);
-                    const fingerDir = new THREE.Vector3().subVectors(vIndexTip, vIndexMCP).normalize();
-                    const indexBone = handModel.getObjectByName('index_bone'); // Remplacer par le nom réel du bone
-                    if (indexBone) {
-                        const fingerQuaternion = new THREE.Quaternion().setFromUnitVectors(
-                            new THREE.Vector3(0, 1, 0), // Axe par défaut du bone
-                            fingerDir
-                        );
-                        indexBone.quaternion.slerp(fingerQuaternion, lerpFactor);
-                    }
+                    const fingerLandmarks = [
+                        { name: 'index_bone', base: 5, tip: 8 }, // Index
+                        { name: 'middle_bone', base: 9, tip: 12 }, // Majeur
+                        { name: 'ring_bone', base: 13, tip: 16 }, // Annulaire
+                        { name: 'pinky_bone', base: 17, tip: 20 }, // Auriculaire
+                        { name: 'thumb_bone', base: 2, tip: 4 } // Pouce
+                    ];
+
+                    fingerLandmarks.forEach(finger => {
+                        const bone = handModel.getObjectByName(finger.name);
+                        if (bone) {
+                            const base = landmarks[finger.base];
+                            const tip = landmarks[finger.tip];
+                            const vBase = new THREE.Vector3(base.x, -base.y, base.z);
+                            const vTip = new THREE.Vector3(tip.x, -tip.y, tip.z);
+                            const fingerDir = new THREE.Vector3().subVectors(vTip, vBase).normalize();
+                            const fingerQuaternion = new THREE.Quaternion().setFromUnitVectors(
+                                new THREE.Vector3(0, 1, 0), // Suppose que l'axe par défaut du bone est Y
+                                fingerDir
+                            );
+                            bone.quaternion.slerp(fingerQuaternion, lerpFactor);
+                        }
+                    });
                 }
 
                 document.getElementById('status').textContent = "Main détectée";
@@ -161,7 +170,7 @@
                     console.error("Erreur caméra :", e);
                 }
             },
-            width: 1280, // Augmenter la résolution pour plus de précision
+            width: 1280, // Résolution élevée pour précision
             height: 720,
             facingMode: 'user'
         });
