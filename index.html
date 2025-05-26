@@ -55,7 +55,6 @@
         // 2. Chargement modèle
         const loader = new THREE.GLTFLoader();
         let handModel;
-        let modelReady = false;
         
         loader.load(
             './hand.gltf',
@@ -63,9 +62,11 @@
                 handModel = gltf.scene;
                 handModel.scale.set(1, 1, 1);
                 handModel.position.set(0, 0, 0);
-                handModel.rotation.set(Math.PI, 0, Math.PI/2); // Orientation forcée
+                
+                // CORRECTION CLÉ: Orientation initiale garantie
+                handModel.rotation.set(Math.PI, 0, 0); // Doigts vers le haut, paume face caméra
+                
                 scene.add(handModel);
-                modelReady = true;
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
             },
             undefined,
@@ -89,7 +90,7 @@
         });
 
         hands.onResults((results) => {
-            if (modelReady && results.multiHandLandmarks?.length > 0) {
+            if (handModel && results.multiHandLandmarks?.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
                 
                 // Position
@@ -104,9 +105,11 @@
                 const wrist = landmarks[0];
                 const middle = landmarks[9];
                 const angle = Math.atan2(middle.y - wrist.y, middle.x - wrist.x);
-                handModel.rotation.z = -angle;
-                handModel.rotation.x = Math.PI;
-                handModel.rotation.y = 0;
+                handModel.rotation.z = -angle; // Rotation synchrone
+                
+                // Maintien de l'orientation verticale
+                handModel.rotation.x = Math.PI; // Doigts toujours vers le haut
+                handModel.rotation.y = 0; // Pas de basculement
             }
         });
 
