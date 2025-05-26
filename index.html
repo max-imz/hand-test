@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
@@ -31,28 +31,29 @@
 
     <video id="video" autoplay playsinline style="display:none;"></video>
 
+    <!-- Three.js + MediaPipe -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
     <script>
-        // 1. Initialisation Three.js
+        // Initialisation Three.js
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.z = 5;
         
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('container').appendChild(renderer.domElement);
 
-        // Éclairage
+        // Lumières
         const light = new THREE.DirectionalLight(0xffffff, 1.5);
         light.position.set(2, 2, 2);
         scene.add(light);
         scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-        // 2. Chargement modèle
+        // Chargement du modèle 3D
         const loader = new THREE.GLTFLoader();
         let handModel;
         
@@ -62,21 +63,18 @@
                 handModel = gltf.scene;
                 handModel.scale.set(1, 1, 1);
                 handModel.position.set(0, 0, 0);
-                
-                // CORRECTION CLÉ: Orientation initiale garantie
-                handModel.rotation.set(Math.PI, 0, 0); // Doigts vers le haut, paume face caméra
-                
+                handModel.rotation.set(Math.PI, 0, 0);  // Correction initiale si nécessaire
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
             },
             undefined,
             (error) => {
-                console.error("Erreur:", error);
-                document.getElementById('status').textContent = "Erreur de chargement";
+                console.error("Erreur de chargement :", error);
+                document.getElementById('status').textContent = "Erreur : Vérifiez hand.gltf";
             }
         );
 
-        // 3. Configuration MediaPipe
+        // Configuration MediaPipe
         const hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
@@ -84,40 +82,52 @@
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
-            minDetectionConfidence: 0.8,
-            minTrackingConfidence: 0.8,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7,
             selfieMode: true
         });
 
         hands.onResults((results) => {
-            if (handModel && results.multiHandLandmarks?.length > 0) {
+            if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
-                
-                // Position
-                const palmX = (landmarks[0].x - 0.5) * 6;
-                const palmY = -(landmarks[0].y - 0.5) * 6;
-                
-                // Lissage
-                handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, 0.2);
-                handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, 0.2);
-                
-                // Rotation
+
+                // Position (poignet)
                 const wrist = landmarks[0];
-                const middle = landmarks[9];
-                const angle = Math.atan2(middle.y - wrist.y, middle.x - wrist.x);
-                handModel.rotation.z = -angle; // Rotation synchrone
-                
-                // Maintien de l'orientation verticale
-                handModel.rotation.x = Math.PI; // Doigts toujours vers le haut
-                handModel.rotation.y = 0; // Pas de basculement
+                const palmX = (wrist.x - 0.5) * 6;
+                const palmY = -(wrist.y - 0.5) * 6;
+                const lerpFactor = 0.2;
+                handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, lerpFactor);
+                handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
+                handModel.position.z = 0;
+
+                // Orientation 3D complète
+                const indexBase = landmarks[5];  // Base de l'index
+                const pinkyBase = landmarks[17]; // Base de l'auriculaire
+
+                const vWrist = new THREE.Vector3(wrist.x, -wrist.y, wrist.z);
+                const vIndex = new THREE.Vector3(indexBase.x, -indexBase.y, indexBase.z);
+                const vPinky = new THREE.Vector3(pinkyBase.x, -pinkyBase.y, pinkyBase.z);
+
+                const xDir = new THREE.Vector3().subVectors(vIndex, vPinky).normalize();
+                const yDir = new THREE.Vector3().subVectors(vIndex, vWrist).normalize();
+                const zDir = new THREE.Vector3().crossVectors(xDir, yDir).normalize();
+                yDir.crossVectors(zDir, xDir).normalize();
+
+                const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
+                const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
+
+                handModel.quaternion.slerp(quaternion, lerpFactor);
             }
         });
 
-        // 4. Caméra
+        // Caméra
         const cameraMP = new Camera(video, {
             onFrame: async () => {
-                try { await hands.send({ image: video }); } 
-                catch (e) { console.error("Erreur caméra:", e); }
+                try {
+                    await hands.send({ image: video });
+                } catch (e) {
+                    console.error("Erreur caméra :", e);
+                }
             },
             width: 640,
             height: 480,
@@ -125,20 +135,19 @@
         });
 
         cameraMP.start().catch(e => {
-            console.error("Erreur:", e);
-            document.getElementById('status').textContent = "Erreur caméra";
+            console.error("Erreur démarrage caméra :", e);
+            document.getElementById('status').textContent = "Erreur : Autorisez la caméra";
         });
 
-        // 5. Animation
+        // Animation
         function animate() {
             requestAnimationFrame(animate);
             renderer.render(scene, camera);
         }
         animate();
 
-        // Redimensionnement
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth/window.innerHeight;
+            camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
