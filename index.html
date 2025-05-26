@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="fr">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Main 3D - Suivi parfait</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Main 3D Tracking</title>
     <style>
         body, html {
             margin: 0; padding: 0; overflow: hidden;
@@ -28,9 +28,10 @@
 <body>
     <div id="container"></div>
     <div id="status">Initialisation...</div>
+
     <video id="video" autoplay playsinline style="display:none;"></video>
 
-    <!-- Bibliothèques -->
+    <!-- Three.js + MediaPipe -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
@@ -52,10 +53,9 @@
         scene.add(light);
         scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-        // Chargement du modèle hand.gltf
+        // Chargement du modèle 3D
         const loader = new THREE.GLTFLoader();
         let handModel;
-        let initialOrientationApplied = false;
 
         loader.load(
             './hand.gltf',
@@ -73,7 +73,7 @@
             }
         );
 
-        // Initialisation MediaPipe Hands
+        // MediaPipe Hands
         const hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
@@ -86,48 +86,37 @@
             selfieMode: true
         });
 
-        // Gestion des résultats MediaPipe
         hands.onResults((results) => {
             if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                // Position de la main
-                const palmX = (landmarks[0].x - 0.5) * 6;
-                const palmY = -(landmarks[0].y - 0.5) * 6;
-                const lerpFactor = 0.2;
-
+                // Position (suivi du poignet)
+                const wrist = landmarks[0];
+                const palmX = (wrist.x - 0.5) * 6;
+                const palmY = -(wrist.y - 0.5) * 6;
+                const lerpFactor = 0.3;
                 handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, lerpFactor);
                 handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
                 handModel.position.z = 0;
 
-                // Rotation avec 3 points : poignet, base index et base majeur
-                const wrist = landmarks[0];
-                const indexBase = landmarks[5];
-                const middleBase = landmarks[9];
+                // Orientation complète de la paume
+                const indexBase = landmarks[5];  
+                const pinkyBase = landmarks[17]; 
 
-                const v1 = new THREE.Vector3(
-                    indexBase.x - wrist.x,
-                    indexBase.y - wrist.y,
-                    indexBase.z - wrist.z
-                );
-                const v2 = new THREE.Vector3(
-                    middleBase.x - wrist.x,
-                    middleBase.y - wrist.y,
-                    middleBase.z - wrist.z
-                );
+                const vWrist = new THREE.Vector3(wrist.x, -wrist.y, wrist.z);
+                const vIndex = new THREE.Vector3(indexBase.x, -indexBase.y, indexBase.z);
+                const vPinky = new THREE.Vector3(pinkyBase.x, -pinkyBase.y, pinkyBase.z);
 
-                const xAxis = v1.clone().normalize();
-                const zAxis = new THREE.Vector3().crossVectors(v1, v2).normalize();
-                const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis).normalize();
+                // Repère main : X = Pinky-Index, Y = normal, Z = Pinky-Wrist
+                const xDir = new THREE.Vector3().subVectors(vPinky, vIndex).normalize();
+                const zDir = new THREE.Vector3().subVectors(vPinky, vWrist).normalize();
+                const yDir = new THREE.Vector3().crossVectors(zDir, xDir).normalize();
+                zDir.crossVectors(xDir, yDir).normalize();
 
-                const matrix = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
-                handModel.setRotationFromMatrix(matrix);
+                const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
+                const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
 
-                // Appliquer une seule fois la rotation de correction (selon ton modèle)
-                if (!initialOrientationApplied) {
-                    handModel.rotateX(Math.PI); // ← Adapter selon orientation par défaut
-                    initialOrientationApplied = true;
-                }
+                handModel.quaternion.slerp(quaternion, lerpFactor);
             }
         });
 
@@ -157,7 +146,6 @@
         }
         animate();
 
-        // Adaptation taille écran
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
