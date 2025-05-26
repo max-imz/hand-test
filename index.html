@@ -6,20 +6,41 @@
   <style>
     body, html {
       margin: 0; padding: 0; overflow: hidden;
-      background: #111; color: white;
-      display: flex; flex-direction: column; align-items: center;
+      background: #111;
+      color: #0ff;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      user-select: none;
+      height: 100vh;
+      justify-content: center;
     }
-    video, canvas {
-      transform: scaleX(-1); /* miroir */
+    h1 {
+      margin: 0;
+      font-weight: 600;
+      font-size: 2rem;
+      letter-spacing: 0.05em;
+      text-shadow: 0 0 10px #0ff;
+      user-select: text;
+    }
+    #video, #canvas {
+      margin-top: 15px;
+      border-radius: 12px;
+      border: 2px solid #0ff;
+      box-shadow: 0 0 20px #0ff44;
+      transform: scaleX(-1);
       -webkit-transform: scaleX(-1);
-      border: 1px solid #666;
-      margin-top: 10px;
+      width: 640px;
+      height: 480px;
+      object-fit: cover;
+      background-color: #222;
     }
   </style>
 </head>
 <body>
   <h1>Détection Main TensorFlow.js Handpose</h1>
-  <video id="video" width="640" height="480" autoplay playsinline></video>
+  <video id="video" autoplay playsinline muted></video>
   <canvas id="canvas" width="640" height="480"></canvas>
 
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
@@ -32,32 +53,56 @@
       const canvas = document.getElementById('canvas');
       const ctx = canvas.getContext('2d');
 
-      // Demander accès caméra
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      // Accès à la caméra
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
       video.srcObject = stream;
+      await new Promise(resolve => video.onloadedmetadata = resolve);
 
-      // Charger le modèle handpose
+      // Charger le modèle Handpose
       const model = await handpose.load();
       console.log('Modèle handpose chargé');
 
-      async function detect() {
-        const predictions = await model.estimateHands(video);
+      function drawLandmarks(landmarks) {
+        ctx.fillStyle = '#0ff';
+        ctx.strokeStyle = '#08b';
+        ctx.lineWidth = 2;
 
+        // Connexions entre points (doigts)
+        const fingers = [
+          [0,1,2,3,4],
+          [0,5,6,7,8],
+          [0,9,10,11,12],
+          [0,13,14,15,16],
+          [0,17,18,19,20]
+        ];
+
+        fingers.forEach(finger => {
+          ctx.beginPath();
+          ctx.moveTo(landmarks[finger[0]][0], landmarks[finger[0]][1]);
+          for(let i=1; i<finger.length; i++) {
+            ctx.lineTo(landmarks[finger[i]][0], landmarks[finger[i]][1]);
+          }
+          ctx.stroke();
+        });
+
+        // Points des articulations
+        landmarks.forEach(([x, y]) => {
+          ctx.beginPath();
+          ctx.arc(x, y, 6, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.stroke();
+        });
+      }
+
+      async function detect() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        if (predictions.length > 0) {
-          predictions.forEach(prediction => {
-            const landmarks = prediction.landmarks;
+        const predictions = await model.estimateHands(video);
 
-            // Dessiner les points des articulations
-            for (let i = 0; i < landmarks.length; i++) {
-              const [x, y, z] = landmarks[i];
-              ctx.beginPath();
-              ctx.arc(x, y, 5, 0, 2 * Math.PI);
-              ctx.fillStyle = 'red';
-              ctx.fill();
-            }
+        if(predictions.length > 0) {
+          predictions.forEach(prediction => {
+            drawLandmarks(prediction.landmarks);
           });
         }
 
