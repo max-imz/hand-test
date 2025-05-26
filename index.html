@@ -5,14 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Détection Main Pro - Fond Noir</title>
   <style>
-    /* Reset et style général */
     *, *::before, *::after {
       box-sizing: border-box;
     }
     body, html {
       margin: 0; padding: 0;
       height: 100vh;
-      background-color: #111; /* fond noir */
+      background-color: #111;
       color: #eee;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       display: flex;
@@ -36,7 +35,7 @@
       width: 640px;
       max-width: 95vw;
       aspect-ratio: 4 / 3;
-      background: #111; /* fond noir */
+      background: #111;
       border-radius: 12px;
       box-shadow: 0 0 25px #0ff88a;
       overflow: hidden;
@@ -71,8 +70,13 @@
   </div>
   <div id="status">Initialisation...</div>
 
+  <!-- TensorFlow.js Core -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.9.0/dist/tf-core.min.js"></script>
+  <!-- TensorFlow.js Backend WebGL -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.9.0/dist/tf-backend-webgl.min.js"></script>
+  <!-- TensorFlow.js Converter -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.9.0/dist/tf-converter.min.js"></script>
+  <!-- Handpose Model -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7/dist/handpose.min.js"></script>
 
   <script>
@@ -110,7 +114,10 @@
       }
 
       async function loadModel() {
-        logStatus('Chargement modèle...');
+        logStatus('Chargement backend WebGL...');
+        await tf.setBackend('webgl');
+        await tf.ready();
+        logStatus('Backend WebGL prêt, chargement modèle...');
         const model = await handpose.load({
           detectionConfidence: 0.8,
           maxContinuousChecks: 10,
@@ -120,11 +127,11 @@
       }
 
       const connections = [
-        [0,1],[1,2],[2,3],[3,4],       // Pouce
-        [0,5],[5,6],[6,7],[7,8],       // Index
-        [0,9],[9,10],[10,11],[11,12],  // Majeur
-        [0,13],[13,14],[14,15],[15,16],// Annulaire
-        [0,17],[17,18],[18,19],[19,20] // Auriculaire
+        [0,1],[1,2],[2,3],[3,4],
+        [0,5],[5,6],[6,7],[7,8],
+        [0,9],[9,10],[10,11],[11,12],
+        [0,13],[13,14],[14,15],[15,16],
+        [0,17],[17,18],[18,19],[19,20]
       ];
 
       function drawKeypoints(keypoints) {
