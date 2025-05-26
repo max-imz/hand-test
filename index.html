@@ -42,7 +42,7 @@
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.z = 5;
-        
+
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('container').appendChild(renderer.domElement);
@@ -56,14 +56,13 @@
         // Chargement du modèle 3D
         const loader = new THREE.GLTFLoader();
         let handModel;
-        
+
         loader.load(
             './hand.gltf',
             (gltf) => {
                 handModel = gltf.scene;
                 handModel.scale.set(1, 1, 1);
                 handModel.position.set(0, 0, 0);
-                handModel.rotation.set(Math.PI, 0, 0);  // Correction initiale si nécessaire
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
             },
@@ -74,11 +73,11 @@
             }
         );
 
-        // Configuration MediaPipe
+        // MediaPipe Hands
         const hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
-        
+
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
@@ -91,27 +90,28 @@
             if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                // Position (poignet)
+                // Position (suivi du poignet)
                 const wrist = landmarks[0];
                 const palmX = (wrist.x - 0.5) * 6;
                 const palmY = -(wrist.y - 0.5) * 6;
-                const lerpFactor = 0.2;
+                const lerpFactor = 0.3;
                 handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, lerpFactor);
                 handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
                 handModel.position.z = 0;
 
-                // Orientation 3D complète
-                const indexBase = landmarks[5];  // Base de l'index
-                const pinkyBase = landmarks[17]; // Base de l'auriculaire
+                // Orientation complète de la paume
+                const indexBase = landmarks[5];  
+                const pinkyBase = landmarks[17]; 
 
                 const vWrist = new THREE.Vector3(wrist.x, -wrist.y, wrist.z);
                 const vIndex = new THREE.Vector3(indexBase.x, -indexBase.y, indexBase.z);
                 const vPinky = new THREE.Vector3(pinkyBase.x, -pinkyBase.y, pinkyBase.z);
 
-                const xDir = new THREE.Vector3().subVectors(vIndex, vPinky).normalize();
-                const yDir = new THREE.Vector3().subVectors(vIndex, vWrist).normalize();
-                const zDir = new THREE.Vector3().crossVectors(xDir, yDir).normalize();
-                yDir.crossVectors(zDir, xDir).normalize();
+                // Repère main : X = Pinky-Index, Y = normal, Z = Pinky-Wrist
+                const xDir = new THREE.Vector3().subVectors(vPinky, vIndex).normalize();
+                const zDir = new THREE.Vector3().subVectors(vPinky, vWrist).normalize();
+                const yDir = new THREE.Vector3().crossVectors(zDir, xDir).normalize();
+                zDir.crossVectors(xDir, yDir).normalize();
 
                 const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
                 const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
