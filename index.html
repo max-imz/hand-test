@@ -53,7 +53,7 @@
         scene.add(light);
         scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-        // 2. Chargement du modèle 3D avec orientation initiale FORCÉE
+        // 2. Chargement du modèle 3D
         const loader = new THREE.GLTFLoader();
         let handModel;
         
@@ -63,8 +63,6 @@
                 handModel = gltf.scene;
                 handModel.scale.set(1, 1, 1);
                 handModel.position.set(0, 0, 0);
-                // Rotation initiale : doigts vers le haut, paume face à la caméra
-                handModel.rotation.set(Math.PI, 0, 0); // X:p (180°)
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
             },
@@ -75,7 +73,7 @@
             }
         );
 
-        // 3. Configuration MediaPipe avec seuils de confiance élevés
+        // 3. Configuration MediaPipe
         const hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
@@ -83,8 +81,8 @@
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
-            minDetectionConfidence: 0.8, // Seuil augmenté pour plus de stabilité
-            minTrackingConfidence: 0.8,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7,
             selfieMode: true
         });
 
@@ -92,7 +90,7 @@
             if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                // Déplacements (déjà fonctionnels)
+                // Déplacements (gauche/droite/haut/bas) - inchangés
                 const palmX = (landmarks[0].x - 0.5) * 6;
                 const palmY = -(landmarks[0].y - 0.5) * 6;
 
@@ -100,16 +98,15 @@
                 const lerpFactor = 0.2;
                 handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, lerpFactor);
                 handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
+                handModel.position.z = 0;
 
-                // ROTATION CORRIGÉE ET STABILISÉE
+                // CORRECTION ROTATION (maintenant synchro avec la main réelle)
                 const wrist = landmarks[0];
                 const middle = landmarks[9];
-                // Calcul de l'angle avec correction miroir
-                const angle = Math.atan2(wrist.y - middle.y, middle.x - wrist.x);
-                handModel.rotation.z = angle; // Rotation synchrone avec la main réelle
-                // Verrouillage des autres rotations
-                handModel.rotation.x = Math.PI; // Doigts toujours vers le haut
-                handModel.rotation.y = 0; // Pas de basculement latéral
+                const angle = Math.atan2(middle.y - wrist.y, middle.x - wrist.x);
+                handModel.rotation.z = -angle; // Inversion supprimée
+                handModel.rotation.x = Math.PI; // Doigts vers le haut
+                handModel.rotation.y = 0;
             }
         });
 
