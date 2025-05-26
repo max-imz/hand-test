@@ -61,7 +61,8 @@
             './hand.gltf',
             (gltf) => {
                 handModel = gltf.scene;
-                handModel.scale.set(1, 1, 1); // Ajustez cette valeur selon la taille de votre modèle
+                // Augmentation significative de la taille (0.3 au lieu de 0.1)
+                handModel.scale.set(0.3, 0.3, 0.3); // <-- Taille augmentée ici
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
             },
@@ -92,7 +93,7 @@
 
                 // Position (suivi du poignet)
                 const wrist = landmarks[0];
-                const palmX = (wrist.x - 0.5) * 10; // Augmenté le facteur pour plus de sensibilité
+                const palmX = (wrist.x - 0.5) * 10; 
                 const palmY = -(wrist.y - 0.5) * 10;
                 
                 // Application directe sans interpolation
