@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-	<meta charset="UTF-8">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Main 3D Tracking</title>
     <style>
@@ -53,7 +53,7 @@
         scene.add(light);
         scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-        // 2. Chargement du modèle 3D - AJOUT d'une rotation initiale explicite
+        // 2. Chargement du modèle 3D avec orientation initiale FORCÉE
         const loader = new THREE.GLTFLoader();
         let handModel;
         
@@ -63,23 +63,28 @@
                 handModel = gltf.scene;
                 handModel.scale.set(1, 1, 1);
                 handModel.position.set(0, 0, 0);
-                // Rotation initiale forcée (doigts vers le haut, paume face à la caméra)
-                handModel.rotation.set(Math.PI, 0, 0); // X:p (180°) pour corriger l'orientation native
+                // Rotation initiale : doigts vers le haut, paume face à la caméra
+                handModel.rotation.set(Math.PI, 0, 0); // X:π (180°)
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
             },
             undefined,
-            (error) => console.error("Erreur de chargement :", error)
+            (error) => {
+                console.error("Erreur de chargement :", error);
+                document.getElementById('status').textContent = "Erreur : Vérifiez hand.gltf";
+            }
         );
 
-        // 3. Configuration MediaPipe - AJOUT d'un seuil de confiance plus strict
-        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        // 3. Configuration MediaPipe avec seuils de confiance élevés
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
         
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
-            minDetectionConfidence: 0.8, // Augmenté à 0.8 pour éviter les détections fantômes
-            minTrackingConfidence: 0.8,  // Idem
+            minDetectionConfidence: 0.8, // Seuil augmenté pour plus de stabilité
+            minTrackingConfidence: 0.8,
             selfieMode: true
         });
 
@@ -87,24 +92,24 @@
             if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                // Déplacements (inchangés)
+                // Déplacements (déjà fonctionnels)
                 const palmX = (landmarks[0].x - 0.5) * 6;
                 const palmY = -(landmarks[0].y - 0.5) * 6;
 
-                // Lissage
+                // Lissage du mouvement
                 const lerpFactor = 0.2;
                 handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, lerpFactor);
                 handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
 
-                // CORRECTION ROTATION STABLE
+                // ROTATION CORRIGÉE ET STABILISÉE
                 const wrist = landmarks[0];
                 const middle = landmarks[9];
-                // Calcul de l'angle avec stabilisation
-                const angle = Math.atan2(middle.y - wrist.y, middle.x - wrist.x);
-                handModel.rotation.z = -angle; // Rotation horizontale synchrone
-                // FORCER la rotation X à p (évite les basculements aléatoires)
-                handModel.rotation.x = Math.PI; 
-                handModel.rotation.y = 0; 
+                // Calcul de l'angle avec correction miroir
+                const angle = Math.atan2(wrist.y - middle.y, middle.x - wrist.x);
+                handModel.rotation.z = angle; // Rotation synchrone avec la main réelle
+                // Verrouillage des autres rotations
+                handModel.rotation.x = Math.PI; // Doigts toujours vers le haut
+                handModel.rotation.y = 0; // Pas de basculement latéral
             }
         });
 
