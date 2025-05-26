@@ -63,10 +63,6 @@
                 handModel = gltf.scene;
                 handModel.scale.set(1, 1, 1);
                 handModel.position.set(0, 0, 0);
-
-                // Apply a fixed correction rotation to align the model's default pose
-                // Adjust this based on the hand.gltf model's default orientation
-                handModel.rotation.set(0, 0, 0); // Reset rotation
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
             },
@@ -85,64 +81,97 @@
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
-            minDetectionConfidence: 0.7,
-            minTrackingConfidence: 0.7,
+            minDetectionConfidence: 0.8, // Increased for more reliable detection
+            minTrackingConfidence: 0.8, // Increased for more reliable tracking
             selfieMode: true
         });
+
+        // Variables for smoothing
+        const landmarkHistory = [];
+        const HISTORY_SIZE = 5; // Number of frames to average over
+        let lastValidQuaternion = new THREE.Quaternion();
+        let lastValidPosition = new THREE.Vector3();
 
         hands.onResults((results) => {
             if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
+                const handedness = results.multiHandedness[0];
+
+                // Check detection confidence
+                if (handedness.score < 0.8) {
+                    document.getElementById('status').textContent = "Détection faible - Stabilisez votre main";
+                    return; // Skip update if confidence is too low
+                }
+
+                // Log confidence for debugging
+                console.log("Detection confidence:", handedness.score);
+
+                // Smooth landmarks by averaging over the last few frames
+                landmarkHistory.push(landmarks);
+                if (landmarkHistory.length > HISTORY_SIZE) {
+                    landmarkHistory.shift();
+                }
+
+                // Compute averaged landmarks
+                const averagedLandmarks = [];
+                for (let i = 0; i < landmarks.length; i++) {
+                    const avgPoint = { x: 0, y: 0, z: 0 };
+                    for (const frame of landmarkHistory) {
+                        avgPoint.x += frame[i].x;
+                        avgPoint.y += frame[i].y;
+                        avgPoint.z += frame[i].z || 0;
+                    }
+                    avgPoint.x /= landmarkHistory.length;
+                    avgPoint.y /= landmarkHistory.length;
+                    avgPoint.z /= landmarkHistory.length;
+                    averagedLandmarks.push(avgPoint);
+                }
 
                 // Position (suivi du poignet)
-                const wrist = landmarks[0];
+                const wrist = averagedLandmarks[0];
                 const palmX = (wrist.x - 0.5) * 6;
                 const palmY = -(wrist.y - 0.5) * 6;
-                const lerpFactor = 0.3;
-                handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, lerpFactor);
-                handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
-                handModel.position.z = 0;
+                const lerpFactor = 0.5; // Increased for more smoothing
+                lastValidPosition.x = THREE.MathUtils.lerp(lastValidPosition.x, palmX, lerpFactor);
+                lastValidPosition.y = THREE.MathUtils.lerp(lastValidPosition.y, palmY, lerpFactor);
+                lastValidPosition.z = 0;
+                handModel.position.copy(lastValidPosition);
 
                 // Orientation complète de la paume
-                const indexBase = landmarks[5]; // Base of index finger
-                const pinkyBase = landmarks[17]; // Base of pinky finger
-                const middleTip = landmarks[12]; // Tip of middle finger (to determine finger direction)
+                const indexBase = averagedLandmarks[5]; // Base of index finger
+                const pinkyBase = averagedLandmarks[17]; // Base of pinky finger
+                const middleTip = averagedLandmarks[12]; // Tip of middle finger
 
                 // Adjust for selfieMode (mirrored X-axis)
-                const vWrist = new THREE.Vector3(1 - wrist.x, wrist.y, wrist.z || 0);
-                const vIndex = new THREE.Vector3(1 - indexBase.x, indexBase.y, indexBase.z || 0);
-                const vPinky = new THREE.Vector3(1 - pinkyBase.x, pinkyBase.y, pinkyBase.z || 0);
-                const vMiddleTip = new THREE.Vector3(1 - middleTip.x, middleTip.y, middleTip.z || 0);
+                const vWrist = new THREE.Vector3(1 - wrist.x, wrist.y, wrist.z);
+                const vIndex = new THREE.Vector3(1 - indexBase.x, indexBase.y, indexBase.z);
+                const vPinky = new THREE.Vector3(1 - pinkyBase.x, pinkyBase.y, pinkyBase.z);
+                const vMiddleTip = new THREE.Vector3(1 - middleTip.x, middleTip.y, middleTip.z);
 
                 // Define the hand's coordinate system
-                // yDir: Direction of fingers (wrist to middle finger tip)
-                const yDir = new THREE.Vector3().subVectors(vMiddleTip, vWrist).normalize();
-                // xDir: Across the palm (index to pinky)
-                const xDir = new THREE.Vector3().subVectors(vPinky, vIndex).normalize();
-                // zDir: Normal to the palm (cross product of xDir and yDir)
-                const zDir = new THREE.Vector3().crossVectors(xDir, yDir).normalize();
-                // Recompute xDir to ensure orthogonality
+                const yDir = new THREE.Vector3().subVectors(vMiddleTip, vWrist).normalize(); // Fingers direction
+                const xDir = new THREE.Vector3().subVectors(vPinky, vIndex).normalize(); // Across the palm
+                const zDir = new THREE.Vector3().crossVectors(xDir, yDir).normalize(); // Palm normal
                 xDir.crossVectors(yDir, zDir).normalize();
 
-                // Log directions for debugging
-                console.log("yDir (fingers):", yDir);
-                console.log("xDir (across palm):", xDir);
-                console.log("zDir (palm normal):", zDir);
-
-                // Create a rotation matrix from the basis
-                // Assuming hand.gltf fingers point along its local Y-axis by default
+                // Create a rotation matrix
                 const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
 
                 // Convert to quaternion
                 const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
 
-                // Apply a correction rotation if needed
-                // If the model is still misaligned, adjust this correction
-                const correction = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0)); // Rotate 90 degrees around X-axis
+                // Apply correction rotation (adjust based on hand.gltf's default orientation)
+                const correction = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
                 quaternion.multiply(correction);
 
-                // Smoothly apply the rotation
-                handModel.quaternion.slerp(quaternion, lerpFactor);
+                // Smooth the rotation
+                lastValidQuaternion.slerp(quaternion, lerpFactor);
+                handModel.quaternion.copy(lastValidQuaternion);
+
+                // Update status
+                document.getElementById('status').textContent = "Main détectée";
+            } else {
+                document.getElementById('status').textContent = "Aucune main détectée";
             }
         });
 
