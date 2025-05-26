@@ -1,1 +1,73 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Détection Main TensorFlow.js Handpose</title>
+  <style>
+    body, html {
+      margin: 0; padding: 0; overflow: hidden;
+      background: #111; color: white;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    video, canvas {
+      transform: scaleX(-1); /* miroir */
+      -webkit-transform: scaleX(-1);
+      border: 1px solid #666;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Détection Main TensorFlow.js Handpose</h1>
+  <video id="video" width="640" height="480" autoplay playsinline></video>
+  <canvas id="canvas" width="640" height="480"></canvas>
 
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose"></script>
+
+  <script>
+    async function main() {
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+
+      // Demander accès caméra
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+
+      // Charger le modèle handpose
+      const model = await handpose.load();
+      console.log('Modèle handpose chargé');
+
+      async function detect() {
+        const predictions = await model.estimateHands(video);
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        if (predictions.length > 0) {
+          predictions.forEach(prediction => {
+            const landmarks = prediction.landmarks;
+
+            // Dessiner les points des articulations
+            for (let i = 0; i < landmarks.length; i++) {
+              const [x, y, z] = landmarks[i];
+              ctx.beginPath();
+              ctx.arc(x, y, 5, 0, 2 * Math.PI);
+              ctx.fillStyle = 'red';
+              ctx.fill();
+            }
+          });
+        }
+
+        requestAnimationFrame(detect);
+      }
+
+      detect();
+    }
+
+    main().catch(console.error);
+  </script>
+</body>
+</html>
