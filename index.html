@@ -63,6 +63,10 @@
                 handModel = gltf.scene;
                 handModel.scale.set(1, 1, 1);
                 handModel.position.set(0, 0, 0);
+
+                // Apply a fixed correction rotation to align the model's default pose
+                // Adjust this based on the hand.gltf model's default orientation
+                handModel.rotation.set(0, 0, 0); // Reset rotation
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
             },
@@ -92,7 +96,7 @@
 
                 // Position (suivi du poignet)
                 const wrist = landmarks[0];
-                const palmX = (wrist.x - 0.5) * 6; // Adjust scaling if needed
+                const palmX = (wrist.x - 0.5) * 6;
                 const palmY = -(wrist.y - 0.5) * 6;
                 const lerpFactor = 0.3;
                 handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, lerpFactor);
@@ -100,33 +104,41 @@
                 handModel.position.z = 0;
 
                 // Orientation complète de la paume
-                const indexBase = landmarks[5];  
-                const pinkyBase = landmarks[17]; 
-
-                const vWrist = new THREE.Vector3(wrist.x, wrist.y, wrist.z || 0);
-                const vIndex = new THREE.Vector3(indexBase.x, indexBase.y, indexBase.z || 0);
-                const vPinky = new THREE.Vector3(pinkyBase.x, pinkyBase.y, pinkyBase.z || 0);
+                const indexBase = landmarks[5]; // Base of index finger
+                const pinkyBase = landmarks[17]; // Base of pinky finger
+                const middleTip = landmarks[12]; // Tip of middle finger (to determine finger direction)
 
                 // Adjust for selfieMode (mirrored X-axis)
-                vWrist.x = 1 - vWrist.x;
-                vIndex.x = 1 - vIndex.x;
-                vPinky.x = 1 - vPinky.x;
+                const vWrist = new THREE.Vector3(1 - wrist.x, wrist.y, wrist.z || 0);
+                const vIndex = new THREE.Vector3(1 - indexBase.x, indexBase.y, indexBase.z || 0);
+                const vPinky = new THREE.Vector3(1 - pinkyBase.x, pinkyBase.y, pinkyBase.z || 0);
+                const vMiddleTip = new THREE.Vector3(1 - middleTip.x, middleTip.y, middleTip.z || 0);
 
-                // Repère main : Adjusted to align with hand.gltf model's coordinate system
-                // Assuming hand.gltf's fingers point along its local Y-axis, palm faces -Z
-                const xDir = new THREE.Vector3().subVectors(vIndex, vPinky).normalize(); // Across the palm (left to right)
-                const zDir = new THREE.Vector3().subVectors(vWrist, vPinky).normalize(); // From pinky to wrist (along fingers)
-                const yDir = new THREE.Vector3().crossVectors(xDir, zDir).normalize(); // Normal to the palm
-                zDir.crossVectors(xDir, yDir).normalize();
+                // Define the hand's coordinate system
+                // yDir: Direction of fingers (wrist to middle finger tip)
+                const yDir = new THREE.Vector3().subVectors(vMiddleTip, vWrist).normalize();
+                // xDir: Across the palm (index to pinky)
+                const xDir = new THREE.Vector3().subVectors(vPinky, vIndex).normalize();
+                // zDir: Normal to the palm (cross product of xDir and yDir)
+                const zDir = new THREE.Vector3().crossVectors(xDir, yDir).normalize();
+                // Recompute xDir to ensure orthogonality
+                xDir.crossVectors(yDir, zDir).normalize();
+
+                // Log directions for debugging
+                console.log("yDir (fingers):", yDir);
+                console.log("xDir (across palm):", xDir);
+                console.log("zDir (palm normal):", zDir);
 
                 // Create a rotation matrix from the basis
-                const matrix = new THREE.Matrix4().makeBasis(xDir, zDir, yDir); // Note: zDir is now "up" (fingers), yDir is palm normal
+                // Assuming hand.gltf fingers point along its local Y-axis by default
+                const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
 
                 // Convert to quaternion
                 const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
 
-                // Apply a correction rotation to align the model with the detected hand
-                const correction = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, Math.PI)); // 180-degree Z rotation to mirror
+                // Apply a correction rotation if needed
+                // If the model is still misaligned, adjust this correction
+                const correction = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0)); // Rotate 90 degrees around X-axis
                 quaternion.multiply(correction);
 
                 // Smoothly apply the rotation
