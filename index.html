@@ -94,8 +94,8 @@
                 const landmarks = results.multiHandLandmarks[0];
 
                 // Calcul de la position X (déplacement latéral)
-                const palmX = -(landmarks[0].x - 0.5) * 6; // Gauche (+x) → modèle à gauche (-palmX), Droite (-x) → modèle à droite (+palmX)
-                const palmY = -(landmarks[0].y - 0.5) * 6; // Y correct
+                const palmX = (landmarks[0].x - 0.5) * 6; // Supprime l'inversion : Gauche (+x) → modèle à gauche (+palmX), Droite (-x) → modèle à droite (-palmX)
+                const palmY = -(landmarks[0].y - 0.5) * 6; // Y reste inchangé
 
                 // Interpolation pour lisser le mouvement
                 const lerpFactor = 0.2; // Facteur d'interpolation (0 = aucun lissage, 1 = instantané)
@@ -107,7 +107,7 @@
                 const wrist = landmarks[0];
                 const middle = landmarks[9];
                 const angle = Math.atan2(middle.y - wrist.y, middle.x - wrist.x);
-                handModel.rotation.z = angle - Math.PI / 2; // Ajustement pour rotation correcte (miroir)
+                handModel.rotation.z = angle - Math.PI / 2; // Ajustement pour rotation correcte
                 handModel.rotation.x = Math.PI; // 180° sur X pour doigts vers le haut
                 handModel.rotation.y = Math.PI; // 180° sur Y pour effet miroir complet
 
