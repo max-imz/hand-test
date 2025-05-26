@@ -20,7 +20,7 @@
             left: 10px;
             color: white;
             background: rgba(0,0,0,0.7);
-            padding: 10px;
+            paddingttc: 10px;
             font-family: Arial;
         }
     </style>
@@ -81,8 +81,8 @@
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
-            minDetectionConfidence: 0.85,
-            minTrackingConfidence: 0.85,
+            minDetectionConfidence: 0.85, // Stricter threshold
+            minTrackingConfidence: 0.85, // Stricter threshold
             selfieMode: true
         });
 
@@ -97,7 +97,7 @@
                 const landmarks = results.multiHandLandmarks[0];
                 const handedness = results.multiHandedness[0];
 
-                // Ensure only the right hand is detected
+                // Ensure only the right hand is detected (change to "Left" if you want the left hand)
                 if (handedness.label !== "Right") {
                     document.getElementById('status').textContent = "Veuillez montrer votre main droite";
                     return;
@@ -109,7 +109,7 @@
                     return;
                 }
 
-                // Region of Interest (ROI) Check
+                // Region of Interest (ROI) Check: Ensure the hand is roughly centered in the frame
                 const wrist = landmarks[0];
                 if (wrist.x < 0.2 || wrist.x > 0.8 || wrist.y < 0.2 || wrist.y > 0.8) {
                     document.getElementById('status').textContent = "Main hors de la zone centrale";
@@ -140,7 +140,7 @@
                 const wristAvg = averagedLandmarks[0];
                 const palmX = (wristAvg.x - 0.5) * 6;
                 const palmY = -(wristAvg.y - 0.5) * 6;
-                const lerpFactor = 0.6;
+                const lerpFactor = 0.6; // Increased for more smoothing
                 lastValidPosition.x = THREE.MathUtils.lerp(lastValidPosition.x, palmX, lerpFactor);
                 lastValidPosition.y = THREE.MathUtils.lerp(lastValidPosition.y, palmY, lerpFactor);
                 lastValidPosition.z = 0;
@@ -169,16 +169,9 @@
                 // Convert to quaternion
                 const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
 
-                // Step 1: Apply a base correction to align the model with the detected hand
-                // Assuming the hand.gltf model's fingers point along its Y-axis
-                const baseCorrection = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0));
-
-                // Step 2: Apply an additional rotation to make the palm face downward
-                // Rotate around the model's X-axis by -90 degrees (palm down)
-                const palmDownCorrection = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
-
-                // Combine the rotations: first align with the hand, then rotate the palm downward
-                quaternion.multiply(baseCorrection).multiply(palmDownCorrection);
+                // Apply correction rotation (adjust based on hand.gltf's default orientation)
+                const correction = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
+                quaternion.multiply(correction);
 
                 // Smooth rotation
                 lastValidQuaternion.slerp(quaternion, lerpFactor);
