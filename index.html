@@ -90,28 +90,53 @@
         });
 
         hands.onResults((results) => {
-            if (results.multiHandLandmarks?.length > 0 && handModel) {
-                const landmarks = results.multiHandLandmarks[0];
-                
-                // Position 3D (inchangée, correcte)
-                const palmX = -(landmarks[0].x - 0.5) * 6; // Inverse X pour effet miroir
-                const palmY = -(landmarks[0].y - 0.5) * 6; // Y correct
-                handModel.position.set(palmX, palmY, 0);
-                
-                // Rotation : effet miroir pour la rotation Z
-                const wrist = landmarks[0];
-                const middle = landmarks[9];
-                const angle = Math.atan2(middle.y - wrist.y, middle.x - wrist.x);
-                handModel.rotation.z = angle - Math.PI / 2; // Ajustement pour rotation correcte (miroir)
-                handModel.rotation.x = Math.PI; // 180° sur X pour doigts vers le haut
-                handModel.rotation.y = Math.PI; // 180° sur Y pour effet miroir complet
-                
-                // Débogage
-                console.log("Landmarks:", { wristX: wrist.x, wristY: wrist.y, middleX: middle.x, middleY: middle.y });
-                console.log("Position:", { palmX, palmY });
-                console.log("Rotation:", { x: handModel.rotation.x, y: handModel.rotation.y, z: handModel.rotation.z });
-            }
-        });
+		if (results.multiHandLandmarks?.length > 0 && handModel) {
+			const landmarks = results.multiHandLandmarks[0];
+
+			// 1?? Position de la paume (centré et mis à l'échelle)
+			const palmX = -(landmarks[0].x - 0.5) * 6; // Inversion X pour miroir
+			const palmY = -(landmarks[0].y - 0.5) * 6;
+			handModel.position.set(palmX, palmY, 0);
+
+			// 2?? Calcul des vecteurs
+			const wrist = new THREE.Vector3(
+				-(landmarks[0].x - 0.5),
+				-(landmarks[0].y - 0.5),
+				landmarks[0].z
+			);
+			const index = new THREE.Vector3(
+				-(landmarks[5].x - 0.5),
+				-(landmarks[5].y - 0.5),
+				landmarks[5].z
+			);
+			const middle = new THREE.Vector3(
+				-(landmarks[9].x - 0.5),
+				-(landmarks[9].y - 0.5),
+				landmarks[9].z
+			);
+
+			// Forward (index - wrist)
+			const forward = new THREE.Vector3().subVectors(index, wrist).normalize();
+			// Up (middle - wrist)
+			const up = new THREE.Vector3().subVectors(middle, wrist).normalize();
+			// Right = forward x up
+			const right = new THREE.Vector3().crossVectors(forward, up).normalize();
+			// Recalcule up pour être perpendiculaire à forward et right
+			up.crossVectors(right, forward);
+	
+			// 3?? Création de la matrice et quaternion
+			const matrix = new THREE.Matrix4().makeBasis(right, up, forward);
+			const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
+	
+			// 4?? Appliquer la rotation au modèle
+			handModel.setRotationFromQuaternion(quaternion);
+	
+			// 5?? Debug
+			console.log("Position:", { palmX, palmY });
+			console.log("Quaternion:", quaternion);
+		}
+	});
+
 
         // 4. Gestion de la caméra
         const cameraMP = new Camera(video, {
