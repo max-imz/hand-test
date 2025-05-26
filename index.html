@@ -61,7 +61,7 @@
             './hand.gltf',
             (gltf) => {
                 handModel = gltf.scene;
-                handModel.scale.set(0.1, 0.1, 0.1); // Ajustez cette valeur selon la taille de votre modèle
+                handModel.scale.set(1, 1, 1); // Ajustez cette valeur selon la taille de votre modèle
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
             },
