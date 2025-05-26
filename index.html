@@ -1,73 +1,156 @@
-<!DOCTYPE html>
+<!DOCTYPE html>  
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <title>Détection Main TensorFlow.js Handpose</title>
-  <style>
-    body, html {
-      margin: 0; padding: 0; overflow: hidden;
-      background: #111; color: white;
-      display: flex; flex-direction: column; align-items: center;
-    }
-    video, canvas {
-      transform: scaleX(-1); /* miroir */
-      -webkit-transform: scaleX(-1);
-      border: 1px solid #666;
-      margin-top: 10px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Main 3D Tracking</title>
+    <style>
+        body, html {
+            margin: 0; padding: 0; overflow: hidden;
+            background: #111;
+        }
+        #container {
+            position: absolute;
+            width: 100vw;
+            height: 100vh;
+        }
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            font-family: Arial;
+        }
+    </style>
 </head>
 <body>
-  <h1>Détection Main TensorFlow.js Handpose</h1>
-  <video id="video" width="640" height="480" autoplay playsinline></video>
-  <canvas id="canvas" width="640" height="480"></canvas>
+    <div id="container"></div>
+    <div id="status">Initialisation...</div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose"></script>
+    <video id="video" autoplay playsinline style="display:none;"></video>
 
-  <script>
-    async function main() {
-      const video = document.getElementById('video');
-      const canvas = document.getElementById('canvas');
-      const ctx = canvas.getContext('2d');
+    <!-- Three.js + MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
-      // Demander accès caméra
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      video.srcObject = stream;
+    <script>
+        // Initialisation Three.js
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 5;
 
-      // Charger le modèle handpose
-      const model = await handpose.load();
-      console.log('Modèle handpose chargé');
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('container').appendChild(renderer.domElement);
 
-      async function detect() {
-        const predictions = await model.estimateHands(video);
+        // Lumières
+        const light = new THREE.DirectionalLight(0xffffff, 1.5);
+        light.position.set(2, 2, 2);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        // Chargement du modèle 3D
+        const loader = new THREE.GLTFLoader();
+        let handModel;
 
-        if (predictions.length > 0) {
-          predictions.forEach(prediction => {
-            const landmarks = prediction.landmarks;
-
-            // Dessiner les points des articulations
-            for (let i = 0; i < landmarks.length; i++) {
-              const [x, y, z] = landmarks[i];
-              ctx.beginPath();
-              ctx.arc(x, y, 5, 0, 2 * Math.PI);
-              ctx.fillStyle = 'red';
-              ctx.fill();
+        loader.load(
+            './hand.gltf',
+            (gltf) => {
+                handModel = gltf.scene;
+                handModel.scale.set(1, 1, 1);
+                handModel.position.set(0, 0, 0);
+                scene.add(handModel);
+                document.getElementById('status').textContent = "Prêt - Montrez votre main";
+            },
+            undefined,
+            (error) => {
+                console.error("Erreur de chargement :", error);
+                document.getElementById('status').textContent = "Erreur : Vérifiez hand.gltf";
             }
-          });
+        );
+
+        // MediaPipe Hands
+        const hands = new Hands({
+            locateFile: (file) => https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7,
+            selfieMode: true
+        });
+
+        hands.onResults((results) => {
+            if (results.multiHandLandmarks?.length > 0 && handModel) {
+                const landmarks = results.multiHandLandmarks[0];
+
+                // Position (suivi du poignet)
+                const wrist = landmarks[0];
+                const palmX = (wrist.x - 0.5) * 6;
+                const palmY = -(wrist.y - 0.5) * 6;
+                const lerpFactor = 0.3;
+                handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, lerpFactor);
+                handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
+                handModel.position.z = 0;
+
+                // Orientation complète de la paume
+                const indexBase = landmarks[5];  
+                const pinkyBase = landmarks[17]; 
+
+                const vWrist = new THREE.Vector3(wrist.x, -wrist.y, wrist.z);
+                const vIndex = new THREE.Vector3(indexBase.x, -indexBase.y, indexBase.z);
+                const vPinky = new THREE.Vector3(pinkyBase.x, -pinkyBase.y, pinkyBase.z);
+
+                // Repère main : X = Pinky-Index, Y = normal, Z = Pinky-Wrist
+                const xDir = new THREE.Vector3().subVectors(vPinky, vIndex).normalize();
+                const zDir = new THREE.Vector3().subVectors(vPinky, vWrist).normalize();
+                const yDir = new THREE.Vector3().crossVectors(zDir, xDir).normalize();
+                zDir.crossVectors(xDir, yDir).normalize();
+
+                const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
+                const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
+
+                handModel.quaternion.slerp(quaternion, lerpFactor);
+            }
+        });
+
+        // Caméra
+        const cameraMP = new Camera(video, {
+            onFrame: async () => {
+                try {
+                    await hands.send({ image: video });
+                } catch (e) {
+                    console.error("Erreur caméra :", e);
+                }
+            },
+            width: 640,
+            height: 480,
+            facingMode: 'user'
+        });
+
+        cameraMP.start().catch(e => {
+            console.error("Erreur démarrage caméra :", e);
+            document.getElementById('status').textContent = "Erreur : Autorisez la caméra";
+        });
+
+        // Animation
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
         }
+        animate();
 
-        requestAnimationFrame(detect);
-      }
-
-      detect();
-    }
-
-    main().catch(console.error);
-  </script>
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
 </body>
 </html>
