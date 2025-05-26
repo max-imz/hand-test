@@ -89,26 +89,25 @@
             if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                // Position (inchangée)
-                const palmX = -(landmarks[0].x - 0.5) * 6;
-                const palmY = -(landmarks[0].y - 0.5) * 6;
+                // Correction de la position (suppression de l'inversion)
+                const palmX = (landmarks[0].x - 0.5) * 6; // Suppression du signe négatif
+                const palmY = -(landmarks[0].y - 0.5) * 6; // On garde l'inversion Y pour le repère Three.js
                 handModel.position.set(palmX, palmY, 0);
 
-                // 🔥 Correction ajoutée : Rotation 3D complète
-                // Remplace la rotation approximative précédente par une rotation complète
+                // Correction de la rotation
                 const wrist = new THREE.Vector3(
-                    (landmarks[0].x - 0.5),  // Correction : enlever l'inversion X car selfieMode le fait déjà
+                    landmarks[0].x - 0.5,  // Pas d'inversion X
                     -(landmarks[0].y - 0.5), // Y inversé car repère Three.js
                     landmarks[0].z
                 );
                 const index = new THREE.Vector3(
-                    (landmarks[5].x - 0.5),
-                    -(landmarks[5].y - 0.5),
+                    landmarks[5].x - 0.5,  // Pas d'inversion X
+                    -(landmarks[5].y - 0.5), // Y inversé car repère Three.js
                     landmarks[5].z
                 );
                 const middle = new THREE.Vector3(
-                    (landmarks[9].x - 0.5),
-                    -(landmarks[9].y - 0.5),
+                    landmarks[9].x - 0.5,  // Pas d'inversion X
+                    -(landmarks[9].y - 0.5), // Y inversé car repère Three.js
                     landmarks[9].z
                 );
 
@@ -122,17 +121,8 @@
 
                 handModel.setRotationFromQuaternion(quaternion);
 
-                // ✅ On ne supprime rien du code original, mais la rotation calculée est plus précise et fidèle
                 console.log("Position:", { palmX, palmY });
                 console.log("Quaternion:", quaternion);
-
-                // 🔥 Lignes originales inchangées (mais plus nécessaires car remplacées)
-                // const wrist = landmarks[0];
-                // const middle = landmarks[9];
-                // const angle = Math.atan2(middle.y - wrist.y, middle.x - wrist.x);
-                // handModel.rotation.z = angle - Math.PI / 2;
-                // handModel.rotation.x = Math.PI;
-                // handModel.rotation.y = Math.PI;
             }
         });
 
