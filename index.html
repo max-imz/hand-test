@@ -56,6 +56,7 @@
         // Chargement du modèle 3D
         const loader = new THREE.GLTFLoader();
         let handModel;
+        let indexBones = []; // Pour stocker les bones de l'index
 
         loader.load(
             './hand.gltf',
@@ -64,7 +65,22 @@
                 handModel.scale.set(1, 1, 1);
                 handModel.position.set(0, 0, 0);
                 scene.add(handModel);
-                document.getElementById('status').textContent = "Prêt - Montrez votre main";
+
+                // Recherche des bones de l'index (à ajuster selon les noms dans votre modèle)
+                handModel.traverse((node) => {
+                    if (node.isBone) {
+                        if (node.name.includes('index_01') || node.name.includes('Index1')) indexBones[0] = node; // Phalange proximale
+                        if (node.name.includes('index_02') || node.name.includes('Index2')) indexBones[1] = node; // Phalange intermédiaire
+                        if (node.name.includes('index_03') || node.name.includes('Index3')) indexBones[2] = node; // Phalange distale
+                    }
+                });
+
+                if (indexBones.length < 3) {
+                    console.warn("Certains bones de l'index n'ont pas été trouvés. Vérifiez les noms dans hand.gltf.");
+                    document.getElementById('status').textContent = "Erreur : Bones de l'index manquants";
+                } else {
+                    document.getElementById('status').textContent = "Prêt - Montrez votre main";
+                }
             },
             undefined,
             (error) => {
@@ -80,7 +96,7 @@
 
         // Quaternions pour les rotations
         const initialRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0)); // Rotation initiale : x: 0, y: π, z: 0
-        const xRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)); // Rotation supplémentaire : x: -π/2 (-90 degrés)
+        const xRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)); // Rotation supplémentaire : x: -π/2
 
         hands.setOptions({
             maxNumHands: 1,
@@ -91,7 +107,7 @@
         });
 
         hands.onResults((results) => {
-            if (results.multiHandLandmarks?.length > 0 && handModel) {
+            if (results.multiHandLandmarks?.length > 0 && handModel && indexBones.length === 3) {
                 const landmarks = results.multiHandLandmarks[0];
 
                 // Position (suivi du poignet)
@@ -120,11 +136,43 @@
                 const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
                 const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
 
-                // Combiner la rotation dynamique, la rotation initiale (x: 0, y: π, z: 0), et la rotation x: -π/2
+                // Combiner la rotation dynamique, initiale (x: 0, y: π, z: 0), et x: -π/2
                 const finalQuaternion = quaternion.clone().multiply(initialRotation).multiply(xRotation);
-
-                // Appliquer l'interpolation à la rotation combinée
                 handModel.quaternion.slerp(finalQuaternion, lerpFactor);
+
+                // Suivi des articulations de l'index
+                const lm5 = new THREE.Vector3(landmarks[5].x, -landmarks[5].y, landmarks[5].z); // MCP
+                const lm6 = new THREE.Vector3(landmarks[6].x, -landmarks[6].y, landmarks[6].z); // PIP
+                const lm7 = new THREE.Vector3(landmarks[7].x, -landmarks[7].y, landmarks[7].z); // DIP
+                const lm8 = new THREE.Vector3(landmarks[8].x, -landmarks[8].y, landmarks[8].z); // Tip
+
+                // Calcul des directions des segments de l'index
+                const dirProximal = new THREE.Vector3().subVectors(lm6, lm5).normalize(); // MCP -> PIP
+                const dirMiddle = new THREE.Vector3().subVectors(lm7, lm6).normalize(); // PIP -> DIP
+                const dirDistal = new THREE.Vector3().subVectors(lm8, lm7).normalize(); // DIP -> Tip
+
+                // Appliquer les rotations aux bones (en espace local)
+                if (indexBones[0]) {
+                    const proximalQuat = new THREE.Quaternion().setFromUnitVectors(
+                        new THREE.Vector3(0, 1, 0), // Supposons que l'axe par défaut du bone est Y-up
+                        dirProximal
+                    );
+                    indexBones[0].quaternion.slerp(proximalQuat, lerpFactor);
+                }
+                if (indexBones[1]) {
+                    const middleQuat = new THREE.Quaternion().setFromUnitVectors(
+                        new THREE.Vector3(0, 1, 0),
+                        dirMiddle
+                    );
+                    indexBones[1].quaternion.slerp(middleQuat, lerpFactor);
+                }
+                if (indexBones[2]) {
+                    const distalQuat = new THREE.Quaternion().setFromUnitVectors(
+                        new THREE.Vector3(0, 1, 0),
+                        dirDistal
+                    );
+                    indexBones[2].quaternion.slerp(distalQuat, lerpFactor);
+                }
             }
         });
 
