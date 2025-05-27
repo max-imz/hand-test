@@ -56,6 +56,7 @@
         // Chargement du modèle 3D
         const loader = new THREE.GLTFLoader();
         let handModel;
+        let initialRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), Math.PI); // 180° autour de Y
 
         loader.load(
             './hand.gltf',
@@ -63,7 +64,7 @@
                 handModel = gltf.scene;
                 handModel.scale.set(1, 1, 1);
                 handModel.position.set(0, 0, 0);
-                handModel.rotation.y = Math.PI; // Rotation de 180 degrés sur Y
+                handModel.quaternion.copy(initialRotation); // appliquer rotation initiale
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
             },
@@ -115,9 +116,11 @@
                 zDir.crossVectors(xDir, yDir).normalize();
 
                 const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
-                const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
+                const detectedQuaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
 
-                handModel.quaternion.slerp(quaternion, lerpFactor);
+                // Combinaison : initialRotation * detectedQuaternion
+                const finalQuaternion = detectedQuaternion.multiply(initialRotation);
+                handModel.quaternion.slerp(finalQuaternion, lerpFactor);
             }
         });
 
