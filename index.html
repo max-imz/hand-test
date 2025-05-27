@@ -62,7 +62,7 @@
             './hand.gltf',
             (gltf) => {
                 handModel = gltf.scene;
-                handModel.scale.set(1, 1, 1);
+                handModel.scale.set(0.8, 0.8, 0.8); // Réduction légère de la taille (de 1 à 0.8)
                 handModel.position.set(0, 0, 0);
                 scene.add(handModel);
 
@@ -131,7 +131,7 @@
                 const finalQuaternion = quaternion.clone().multiply(initialRotation).multiply(xRotation);
                 handModel.quaternion.slerp(finalQuaternion, lerpFactor);
 
-                // Ajout : Mise à jour des rotations des doigts
+                // Mise à jour des rotations des doigts
                 const fingerBones = {
                     thumb: [
                         { bone: 'thumb_01R_08', start: 2, end: 3 },
@@ -160,7 +160,7 @@
                     ]
                 };
 
-                // Fonction pour calculer la rotation d'un segment de doigt
+                // Fonction pour calculer la rotation d'un segment de doigt avec contraintes
                 function updateBoneRotation(boneName, startLandmark, endLandmark) {
                     if (!bonesMap[boneName]) return;
                     const start = landmarks[startLandmark];
@@ -168,8 +168,23 @@
                     const vector = new THREE.Vector3(end.x - start.x, -(end.y - start.y), end.z - start.z).normalize();
                     const bone = bonesMap[boneName];
                     const boneDir = new THREE.Vector3(0, 1, 0); // Supposons que l'axe initial du bone est Y-up
+
+                    // Calculer le quaternion de rotation
                     const quaternion = new THREE.Quaternion().setFromUnitVectors(boneDir, vector);
-                    bone.quaternion.slerp(quaternion, lerpFactor);
+
+                    // Convertir le quaternion en angles d'Euler pour appliquer des contraintes
+                    const euler = new THREE.Euler().setFromQuaternion(quaternion, 'XYZ');
+                    
+                    // Limiter les angles pour éviter des rotations non naturelles (ajustable)
+                    euler.x = THREE.MathUtils.clamp(euler.x, -Math.PI / 4, Math.PI / 4); // Limite à ±45 degrés
+                    euler.y = THREE.MathUtils.clamp(euler.y, -Math.PI / 4, Math.PI / 4);
+                    euler.z = THREE.MathUtils.clamp(euler.z, -Math.PI / 4, Math.PI / 4);
+
+                    // Reconstruire le quaternion avec les angles limités
+                    const constrainedQuaternion = new THREE.Quaternion().setFromEuler(euler);
+
+                    // Appliquer la rotation avec interpolation
+                    bone.quaternion.slerp(constrainedQuaternion, lerpFactor);
                 }
 
                 // Mettre à jour chaque doigt
