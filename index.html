@@ -61,9 +61,9 @@
                     }
                 });
 
-                if (indexBones.length === 0) {
-                    document.getElementById('status').textContent = "Erreur : Bones index manquants";
-                    console.error("Bones index manquants dans le modèle");
+                if (indexBones.length !== 4) {
+                    document.getElementById('status').textContent = "Erreur : Il faut exactement 4 bones index";
+                    console.error("Bones index manquants ou en trop dans le modèle");
                 }
             },
             undefined,
@@ -90,7 +90,7 @@
             if (results.multiHandLandmarks?.length > 0 && handModel && indexBones.length === 4) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                // Position globale main (poignet)
+                // Mise à jour position main globale (poignet)
                 const wrist = landmarks[0];
                 const palmX = (wrist.x - 0.5) * 6;
                 const palmY = -(wrist.y - 0.5) * 6;
@@ -98,31 +98,25 @@
                 handModel.position.y += (palmY - handModel.position.y) * lerpFactor;
                 handModel.position.z = 0;
 
-                // Synchroniser rotation des bones index sur les articulations 5,6,7,8 (MCP,PIP,DIP,TIP)
-                // Assure-toi que indexBones est ordonné dans le bon ordre pour correspondre à ces landmarks
-                for (let i=0; i<4; i++) {
-                    const startLandmark = landmarks[5 + i];   // MCP=5, PIP=6, DIP=7, TIP=8
-                    const endLandmark = landmarks[6 + i];     // articulation suivante
+                // Synchroniser rotation des bones index (4 bones)
+                for (let i = 0; i < 4; i++) {
+                    const start = landmarks[5 + i];
+                    const end = landmarks[6 + i];
 
-                    const startV = new THREE.Vector3(startLandmark.x, -startLandmark.y, startLandmark.z);
-                    const endV = new THREE.Vector3(endLandmark.x, -endLandmark.y, endLandmark.z);
-
-                    // Direction du segment articulaire
+                    const startV = new THREE.Vector3(start.x, -start.y, start.z);
+                    const endV = new THREE.Vector3(end.x, -end.y, end.z);
                     const dir = new THREE.Vector3().subVectors(endV, startV).normalize();
 
-                    // Position et orientation du bone dans le monde
                     const bone = indexBones[i];
-                    const boneWorldPos = new THREE.Vector3();
-                    bone.getWorldPosition(boneWorldPos);
 
-                    // Calculer cible dans la direction du doigt
-                    const target = boneWorldPos.clone().add(dir);
+                    // Axe local "up" du bone = Y (0,1,0) (à adapter selon modèle)
+                    const boneDir = new THREE.Vector3(0, 1, 0);
 
-                    // Oriented bone vers la cible
-                    bone.lookAt(target);
+                    // Calcul quaternion rotation pour aligner boneDir vers dir
+                    const quat = new THREE.Quaternion().setFromUnitVectors(boneDir, dir);
 
-                    // Lerp rotation pour douceur
-                    bone.quaternion.slerp(bone.quaternion, lerpFactor);
+                    // Appliquer interpolation pour douceur
+                    bone.quaternion.slerp(quat, lerpFactor);
                 }
             }
         });
