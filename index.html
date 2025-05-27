@@ -62,7 +62,7 @@
             './hand.gltf',
             (gltf) => {
                 handModel = gltf.scene;
-                handModel.scale.set(0.8, 0.8, 0.8); // Réduction légère de la taille (de 1 à 0.8)
+                handModel.scale.set(0.8, 0.8, 0.8); // Taille réduite (inchangée)
                 handModel.position.set(0, 0, 0);
                 scene.add(handModel);
 
@@ -91,23 +91,38 @@
         const initialRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0));
         const xRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
 
+        // Ajustement des paramètres de MediaPipe pour améliorer la détection
         hands.setOptions({
             maxNumHands: 1,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.7,
-            minTrackingConfidence: 0.7,
-            selfieMode: true
+            modelComplexity: 1, // Maximum pour la meilleure précision
+            minDetectionConfidence: 0.5, // Réduit pour détecter plus de landmarks
+            minTrackingConfidence: 0.5, // Réduit pour un suivi plus robuste
+            selfieMode: false // Test sans selfieMode pour éviter les inversions
         });
+
+        // Tableau pour stocker les landmarks précédents (pour le lissage)
+        let previousLandmarks = null;
+        const smoothingFactor = 0.7; // Facteur de lissage pour réduire le bruit
 
         hands.onResults((results) => {
             if (results.multiHandLandmarks?.length > 0 && handModel) {
-                const landmarks = results.multiHandLandmarks[0];
+                let landmarks = results.multiHandLandmarks[0];
+
+                // Lissage des landmarks pour réduire le bruit
+                if (previousLandmarks) {
+                    for (let i = 0; i < landmarks.length; i++) {
+                        landmarks[i].x = smoothingFactor * previousLandmarks[i].x + (1 - smoothingFactor) * landmarks[i].x;
+                        landmarks[i].y = smoothingFactor * previousLandmarks[i].y + (1 - smoothingFactor) * landmarks[i].y;
+                        landmarks[i].z = smoothingFactor * previousLandmarks[i].z + (1 - smoothingFactor) * landmarks[i].z;
+                    }
+                }
+                previousLandmarks = landmarks.map(lm => ({ x: lm.x, y: lm.y, z: lm.z })); // Copie pour le prochain frame
 
                 // Position (suivi du poignet, inchangé)
                 const wrist = landmarks[0];
                 const palmX = (wrist.x - 0.5) * 6;
                 const palmY = -(wrist.y - 0.5) * 6;
-                const lerpFactor = 0.3;
+                const lerpFactor = 0.1; // Réduit pour plus de stabilité
                 handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, lerpFactor);
                 handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
                 handModel.position.z = 0;
@@ -167,7 +182,7 @@
                     const end = landmarks[endLandmark];
                     const vector = new THREE.Vector3(end.x - start.x, -(end.y - start.y), end.z - start.z).normalize();
                     const bone = bonesMap[boneName];
-                    const boneDir = new THREE.Vector3(0, 1, 0); // Supposons que l'axe initial du bone est Y-up
+                    const boneDir = new THREE.Vector3(0, 1, 0); // Test avec Y-up (ajustable si nécessaire)
 
                     // Calculer le quaternion de rotation
                     const quaternion = new THREE.Quaternion().setFromUnitVectors(boneDir, vector);
@@ -175,8 +190,8 @@
                     // Convertir le quaternion en angles d'Euler pour appliquer des contraintes
                     const euler = new THREE.Euler().setFromQuaternion(quaternion, 'XYZ');
                     
-                    // Limiter les angles pour éviter des rotations non naturelles (ajustable)
-                    euler.x = THREE.MathUtils.clamp(euler.x, -Math.PI / 4, Math.PI / 4); // Limite à ±45 degrés
+                    // Limiter les angles pour éviter des rotations non naturelles
+                    euler.x = THREE.MathUtils.clamp(euler.x, -Math.PI / 4, Math.PI / 4); // ±45 degrés
                     euler.y = THREE.MathUtils.clamp(euler.y, -Math.PI / 4, Math.PI / 4);
                     euler.z = THREE.MathUtils.clamp(euler.z, -Math.PI / 4, Math.PI / 4);
 
@@ -193,6 +208,9 @@
                         updateBoneRotation(segment.bone, segment.start, segment.end);
                     });
                 }
+            } else {
+                // Si aucune main n'est détectée, afficher un message
+                document.getElementById('status').textContent = "Aucune main détectée";
             }
         });
 
@@ -205,8 +223,8 @@
                     console.error("Erreur caméra :", e);
                 }
             },
-            width: 640,
-            height: 480,
+            width: 1280, // Augmentation de la résolution pour une meilleure détection
+            height: 720,
             facingMode: 'user'
         });
 
