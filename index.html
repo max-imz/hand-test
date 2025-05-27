@@ -1,68 +1,80 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Main 3D avec détection améliorée</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Synchronisation index rigged hand</title>
     <style>
         body, html { margin: 0; padding: 0; overflow: hidden; background: #111; }
-        #container { position: absolute; width: 100vw; height: 100vh; }
-        #status { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.7); padding: 10px; font-family: Arial; }
-        #video { position: absolute; width: 320px; top: 10px; right: 10px; border: 2px solid white; }
+        #container { width: 100vw; height: 100vh; }
+        #status {
+            position: absolute; top: 10px; left: 10px; color: white;
+            background: rgba(0,0,0,0.7); padding: 10px; font-family: Arial;
+            z-index: 10;
+        }
     </style>
 </head>
 <body>
     <div id="container"></div>
     <div id="status">Initialisation...</div>
-    <video id="video" autoplay playsinline></video>
+    <video id="video" autoplay playsinline style="display:none;"></video>
 
+    <!-- Libs -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
     <script>
+        // Setup Three.js
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         camera.position.z = 5;
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('container').appendChild(renderer.domElement);
 
+        // Light
         const light = new THREE.DirectionalLight(0xffffff, 1.5);
         light.position.set(2, 2, 2);
         scene.add(light);
         scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
+        // Loader GLTF
         const loader = new THREE.GLTFLoader();
-        let handModel, indexBone;
+        let handModel;
+        let indexBones = []; // Bones index à remplir
+        const lerpFactor = 0.5;
 
-        loader.load(
-            './hand.gltf',  // Mets ici le chemin de ton fichier rigged
+        loader.load('./rigged_hand.gltf',
             (gltf) => {
                 handModel = gltf.scene;
                 scene.add(handModel);
-                document.getElementById('status').textContent = "Prêt - Montrez votre main";
+                document.getElementById('status').textContent = "Modèle chargé - Montrez votre main";
 
+                // Trouver les bones index dans le squelette (on suppose que noms contiennent "index")
                 handModel.traverse((obj) => {
                     if (obj.isBone && obj.name.toLowerCase().includes("index")) {
-                        indexBone = obj;
-                        console.log("Bone index trouvé :", obj.name);
+                        indexBones.push(obj);
+                        console.log("Bone index détecté :", obj.name);
                     }
                 });
-                if (!indexBone) {
-                    console.error("Erreur : Bones de l'index manquants.");
-                    document.getElementById('status').textContent = "Erreur : Bones index manquants.";
+
+                if (indexBones.length === 0) {
+                    document.getElementById('status').textContent = "Erreur : Bones index manquants";
+                    console.error("Bones index manquants dans le modèle");
                 }
             },
             undefined,
             (error) => {
-                console.error("Erreur chargement hand.gltf :", error);
-                document.getElementById('status').textContent = "Erreur : Vérifiez hand.gltf";
+                console.error("Erreur de chargement :", error);
+                document.getElementById('status').textContent = "Erreur chargement modèle";
             }
         );
 
+        // MediaPipe Hands
+        const video = document.getElementById('video');
         const hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
@@ -75,54 +87,71 @@
         });
 
         hands.onResults((results) => {
-            console.log("Résultats MediaPipe :", results.multiHandLandmarks);
-            if (results.multiHandLandmarks?.length > 0 && handModel && indexBone) {
+            if (results.multiHandLandmarks?.length > 0 && handModel && indexBones.length === 4) {
                 const landmarks = results.multiHandLandmarks[0];
 
+                // Position globale main (poignet)
                 const wrist = landmarks[0];
                 const palmX = (wrist.x - 0.5) * 6;
                 const palmY = -(wrist.y - 0.5) * 6;
-                const lerpFactor = 0.3;
-                handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, lerpFactor);
-                handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
+                handModel.position.x += (palmX - handModel.position.x) * lerpFactor;
+                handModel.position.y += (palmY - handModel.position.y) * lerpFactor;
+                handModel.position.z = 0;
 
-                const mcp = landmarks[5];  // Base index
-                const tip = landmarks[8];  // Tip index
-                const v1 = new THREE.Vector3(mcp.x, -mcp.y, mcp.z);
-                const v2 = new THREE.Vector3(tip.x, -tip.y, tip.z);
-                const direction = new THREE.Vector3().subVectors(v2, v1).normalize();
+                // Synchroniser rotation des bones index sur les articulations 5,6,7,8 (MCP,PIP,DIP,TIP)
+                // Assure-toi que indexBones est ordonné dans le bon ordre pour correspondre à ces landmarks
+                for (let i=0; i<4; i++) {
+                    const startLandmark = landmarks[5 + i];   // MCP=5, PIP=6, DIP=7, TIP=8
+                    const endLandmark = landmarks[6 + i];     // articulation suivante
 
-                const boneWorldPos = new THREE.Vector3();
-                indexBone.getWorldPosition(boneWorldPos);
-                const lookAtTarget = boneWorldPos.clone().add(direction);
-                indexBone.lookAt(lookAtTarget);
-            } else {
-                document.getElementById('status').textContent = "Main non détectée";
+                    const startV = new THREE.Vector3(startLandmark.x, -startLandmark.y, startLandmark.z);
+                    const endV = new THREE.Vector3(endLandmark.x, -endLandmark.y, endLandmark.z);
+
+                    // Direction du segment articulaire
+                    const dir = new THREE.Vector3().subVectors(endV, startV).normalize();
+
+                    // Position et orientation du bone dans le monde
+                    const bone = indexBones[i];
+                    const boneWorldPos = new THREE.Vector3();
+                    bone.getWorldPosition(boneWorldPos);
+
+                    // Calculer cible dans la direction du doigt
+                    const target = boneWorldPos.clone().add(dir);
+
+                    // Oriented bone vers la cible
+                    bone.lookAt(target);
+
+                    // Lerp rotation pour douceur
+                    bone.quaternion.slerp(bone.quaternion, lerpFactor);
+                }
             }
         });
 
-        const video = document.getElementById('video');
+        // Camera MediaPipe
         const cameraMP = new Camera(video, {
             onFrame: async () => {
-                if (video.readyState >= 2) {  // Si la vidéo est prête
-                    await hands.send({ image: video });
-                }
+                await hands.send({image: video});
             },
-            width: 640, height: 480, facingMode: 'user'
+            width: 640,
+            height: 480,
+            facingMode: "user"
         });
+
         cameraMP.start().catch(e => {
-            console.error("Erreur caméra :", e);
+            console.error("Erreur démarrage caméra :", e);
             document.getElementById('status').textContent = "Erreur : Autorisez la caméra";
         });
 
+        // Animation
         function animate() {
             requestAnimationFrame(animate);
             renderer.render(scene, camera);
         }
         animate();
 
+        // Resize
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.aspect = window.innerWidth/window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
