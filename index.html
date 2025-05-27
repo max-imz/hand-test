@@ -78,8 +78,9 @@
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
 
-        // Quaternion pour la rotation initiale (180° sur Y, soit x: 0, y: π, z: 0)
-        const initialRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0));
+        // Quaternions pour les rotations
+        const initialRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0)); // Rotation initiale : x: 0, y: π, z: 0
+        const xRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0)); // Rotation supplémentaire : x: π/2 (90 degrés)
 
         hands.setOptions({
             maxNumHands: 1,
@@ -119,8 +120,8 @@
                 const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
                 const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
 
-                // Combiner la rotation initiale (x: 0, y: π, z: 0) avec la rotation dynamique
-                const finalQuaternion = quaternion.clone().multiply(initialRotation);
+                // Combiner la rotation dynamique, la rotation initiale (x: 0, y: π, z: 0), et la rotation x: π/2
+                const finalQuaternion = quaternion.clone().multiply(initialRotation).multiply(xRotation);
 
                 // Appliquer l'interpolation à la rotation combinée
                 handModel.quaternion.slerp(finalQuaternion, lerpFactor);
