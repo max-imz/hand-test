@@ -3,17 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Main 3D avec détection des doigts</title>
+    <title>Main 3D avec détection améliorée</title>
     <style>
         body, html { margin: 0; padding: 0; overflow: hidden; background: #111; }
         #container { position: absolute; width: 100vw; height: 100vh; }
         #status { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.7); padding: 10px; font-family: Arial; }
+        #video { position: absolute; width: 320px; top: 10px; right: 10px; border: 2px solid white; }
     </style>
 </head>
 <body>
     <div id="container"></div>
     <div id="status">Initialisation...</div>
-    <video id="video" autoplay playsinline style="display:none;"></video>
+    <video id="video" autoplay playsinline></video>
 
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
@@ -38,13 +39,12 @@
         let handModel, indexBone;
 
         loader.load(
-            './hand.gltf', // Remplace par ton fichier rigged
+            './hand.gltf',  // Mets ici le chemin de ton fichier rigged
             (gltf) => {
                 handModel = gltf.scene;
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
 
-                // Recherche du bone de l'index
                 handModel.traverse((obj) => {
                     if (obj.isBone && obj.name.toLowerCase().includes("index")) {
                         indexBone = obj;
@@ -75,10 +75,10 @@
         });
 
         hands.onResults((results) => {
+            console.log("Résultats MediaPipe :", results.multiHandLandmarks);
             if (results.multiHandLandmarks?.length > 0 && handModel && indexBone) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                // Positionner le modèle sur le poignet
                 const wrist = landmarks[0];
                 const palmX = (wrist.x - 0.5) * 6;
                 const palmY = -(wrist.y - 0.5) * 6;
@@ -86,23 +86,28 @@
                 handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, lerpFactor);
                 handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
 
-                // Synchroniser l'index
-                const mcp = landmarks[5];  // Base de l'index
-                const tip = landmarks[8];  // Extrémité de l'index
+                const mcp = landmarks[5];  // Base index
+                const tip = landmarks[8];  // Tip index
                 const v1 = new THREE.Vector3(mcp.x, -mcp.y, mcp.z);
                 const v2 = new THREE.Vector3(tip.x, -tip.y, tip.z);
                 const direction = new THREE.Vector3().subVectors(v2, v1).normalize();
 
                 const boneWorldPos = new THREE.Vector3();
                 indexBone.getWorldPosition(boneWorldPos);
-
                 const lookAtTarget = boneWorldPos.clone().add(direction);
                 indexBone.lookAt(lookAtTarget);
+            } else {
+                document.getElementById('status').textContent = "Main non détectée";
             }
         });
 
+        const video = document.getElementById('video');
         const cameraMP = new Camera(video, {
-            onFrame: async () => { await hands.send({ image: video }); },
+            onFrame: async () => {
+                if (video.readyState >= 2) {  // Si la vidéo est prête
+                    await hands.send({ image: video });
+                }
+            },
             width: 640, height: 480, facingMode: 'user'
         });
         cameraMP.start().catch(e => {
