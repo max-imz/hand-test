@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Synchronisation index rigged hand</title>
+    <title>Sync doigts main 3D avec MediaPipe</title>
     <style>
         body, html { margin: 0; padding: 0; overflow: hidden; background: #111; }
         #container { width: 100vw; height: 100vh; }
@@ -44,32 +44,32 @@
         // Loader GLTF
         const loader = new THREE.GLTFLoader();
         let handModel;
-        let indexBones = []; // Bones index à remplir
+        let indexBones = [];
         const lerpFactor = 0.5;
 
-        loader.load('./rigged_hand.gltf',
+        loader.load('./hand.gltf',
             (gltf) => {
                 handModel = gltf.scene;
                 scene.add(handModel);
                 document.getElementById('status').textContent = "Modèle chargé - Montrez votre main";
 
-                // Trouver les bones index dans le squelette (on suppose que noms contiennent "index")
+                // Trouver bones index
                 handModel.traverse((obj) => {
                     if (obj.isBone && obj.name.toLowerCase().includes("index")) {
                         indexBones.push(obj);
-                        console.log("Bone index détecté :", obj.name);
+                        console.log("Bone index trouvé :", obj.name);
                     }
                 });
 
                 if (indexBones.length !== 4) {
-                    document.getElementById('status').textContent = "Erreur : Il faut exactement 4 bones index";
-                    console.error("Bones index manquants ou en trop dans le modèle");
+                    document.getElementById('status').textContent = "Erreur : Il faut 4 bones index";
+                    console.error("Bones index manquants ou trop nombreux");
                 }
             },
             undefined,
             (error) => {
-                console.error("Erreur de chargement :", error);
-                document.getElementById('status').textContent = "Erreur chargement modèle";
+                console.error("Erreur chargement modèle :", error);
+                document.getElementById('status').textContent = "Erreur chargement hand.gltf";
             }
         );
 
@@ -78,6 +78,7 @@
         const hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
+
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
@@ -90,7 +91,7 @@
             if (results.multiHandLandmarks?.length > 0 && handModel && indexBones.length === 4) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                // Mise à jour position main globale (poignet)
+                // Position main (poignet)
                 const wrist = landmarks[0];
                 const palmX = (wrist.x - 0.5) * 6;
                 const palmY = -(wrist.y - 0.5) * 6;
@@ -98,7 +99,7 @@
                 handModel.position.y += (palmY - handModel.position.y) * lerpFactor;
                 handModel.position.z = 0;
 
-                // Synchroniser rotation des bones index (4 bones)
+                // Bouger les bones index en fonction des landmarks (4 bones)
                 for (let i = 0; i < 4; i++) {
                     const start = landmarks[5 + i];
                     const end = landmarks[6 + i];
@@ -109,19 +110,19 @@
 
                     const bone = indexBones[i];
 
-                    // Axe local "up" du bone = Y (0,1,0) (à adapter selon modèle)
+                    // Axe local du bone supposé être Y (0,1,0)
                     const boneDir = new THREE.Vector3(0, 1, 0);
 
-                    // Calcul quaternion rotation pour aligner boneDir vers dir
+                    // Calcul quaternion pour rotation
                     const quat = new THREE.Quaternion().setFromUnitVectors(boneDir, dir);
 
-                    // Appliquer interpolation pour douceur
+                    // Appliquer interpolation
                     bone.quaternion.slerp(quat, lerpFactor);
                 }
             }
         });
 
-        // Camera MediaPipe
+        // Caméra MediaPipe
         const cameraMP = new Camera(video, {
             onFrame: async () => {
                 await hands.send({image: video});
@@ -136,7 +137,7 @@
             document.getElementById('status').textContent = "Erreur : Autorisez la caméra";
         });
 
-        // Animation
+        // Animation Three.js
         function animate() {
             requestAnimationFrame(animate);
             renderer.render(scene, camera);
