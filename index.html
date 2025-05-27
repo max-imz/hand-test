@@ -66,18 +66,28 @@
                 handModel.position.set(0, 0, 0);
                 scene.add(handModel);
 
+                // Liste tous les bones pour débogage
+                const boneNames = [];
+                handModel.traverse((node) => {
+                    if (node.isBone) {
+                        boneNames.push(node.name);
+                    }
+                });
+                console.log("Bones trouvés dans hand.gltf :", boneNames);
+
                 // Recherche des bones de l'index (à ajuster selon les noms dans votre modèle)
                 handModel.traverse((node) => {
                     if (node.isBone) {
-                        if (node.name.includes('index_01') || node.name.includes('Index1')) indexBones[0] = node; // Phalange proximale
-                        if (node.name.includes('index_02') || node.name.includes('Index2')) indexBones[1] = node; // Phalange intermédiaire
-                        if (node.name.includes('index_03') || node.name.includes('Index3')) indexBones[2] = node; // Phalange distale
+                        // Remplacez par les noms exacts de votre modèle
+                        if (node.name.includes('index_01') || node.name.includes('Index1') || node.name.includes('finger_index_1')) indexBones[0] = node; // Phalange proximale
+                        if (node.name.includes('index_02') || node.name.includes('Index2') || node.name.includes('finger_index_2')) indexBones[1] = node; // Phalange intermédiaire
+                        if (node.name.includes('index_03') || node.name.includes('Index3') || node.name.includes('finger_index_3')) indexBones[2] = node; // Phalange distale
                     }
                 });
 
                 if (indexBones.length < 3) {
                     console.warn("Certains bones de l'index n'ont pas été trouvés. Vérifiez les noms dans hand.gltf.");
-                    document.getElementById('status').textContent = "Erreur : Bones de l'index manquants";
+                    document.getElementById('status').textContent = `Erreur : Bones de l'index manquants. Bones trouvés : ${boneNames.join(', ') || 'aucun'}`;
                 } else {
                     document.getElementById('status').textContent = "Prêt - Montrez votre main";
                 }
