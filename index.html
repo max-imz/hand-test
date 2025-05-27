@@ -1,4 +1,4 @@
-<!DOCTYPE html>  
+<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
@@ -56,7 +56,7 @@
         // Chargement du modèle 3D
         const loader = new THREE.GLTFLoader();
         let handModel;
-        const bones = {}; // Pour stocker les bones du modèle
+        let bonesMap = {};
 
         loader.load(
             './hand.gltf',
@@ -65,14 +65,14 @@
                 handModel.scale.set(1, 1, 1);
                 handModel.position.set(0, 0, 0);
                 scene.add(handModel);
-                
-                // Récupération des bones
-                handModel.traverse((child) => {
-                    if (child.isBone) {
-                        bones[child.name] = child;
+
+                // Mapper les bones par nom pour un accès facile
+                handModel.traverse((node) => {
+                    if (node.isBone) {
+                        bonesMap[node.name] = node;
                     }
                 });
-                
+
                 document.getElementById('status').textContent = "Prêt - Montrez votre main";
             },
             undefined,
@@ -87,7 +87,7 @@
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
 
-        // Quaternions pour les rotations
+        // Quaternions pour les rotations globales
         const initialRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0));
         const xRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
 
@@ -99,35 +99,11 @@
             selfieMode: true
         });
 
-        // Mappage des landmarks aux bones
-        const fingerJoints = {
-            thumb: {
-                landmarks: [1, 2, 3, 4],
-                bones: ["thumb_baseR_03", "thumb_01R_08", "thumb_02R_09", "thumb_03R_010"]
-            },
-            index: {
-                landmarks: [5, 6, 7, 8],
-                bones: ["index_baseR_012", "index_01R_017", "index_02R_018", "index_03R_019"]
-            },
-            middle: {
-                landmarks: [9, 10, 11, 12],
-                bones: ["middle_baseR_020", "middle_01R_025", "middle_02R_026", "middle_03R_027"]
-            },
-            ring: {
-                landmarks: [13, 14, 15, 16],
-                bones: ["ring_baseR_028", "ring_01R_033", "ring_02R_034", "ring_03R_035"]
-            },
-            pinky: {
-                landmarks: [17, 0, 18, 19],
-                bones: ["pinky_baseR_036", "pinky_01R_041", "pinky_02R_042", "pinky_03R_043"]
-            }
-        };
-
         hands.onResults((results) => {
             if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                // Position (suivi du poignet) - Conservé tel quel
+                // Position (suivi du poignet)
                 const wrist = landmarks[0];
                 const palmX = (wrist.x - 0.5) * 6;
                 const palmY = -(wrist.y - 0.5) * 6;
@@ -136,9 +112,9 @@
                 handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
                 handModel.position.z = 0;
 
-                // Orientation complète de la paume - Conservé tel quel
-                const indexBase = landmarks[5];  
-                const pinkyBase = landmarks[17]; 
+                // Orientation complète de la paume
+                const indexBase = landmarks[5];
+                const pinkyBase = landmarks[17];
 
                 const vWrist = new THREE.Vector3(wrist.x, -wrist.y, wrist.z);
                 const vIndex = new THREE.Vector3(indexBase.x, -indexBase.y, indexBase.z);
@@ -151,42 +127,62 @@
 
                 const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
                 const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
+
+                // Combiner la rotation dynamique, la rotation initiale et la rotation x
                 const finalQuaternion = quaternion.clone().multiply(initialRotation).multiply(xRotation);
                 handModel.quaternion.slerp(finalQuaternion, lerpFactor);
 
-                // NOUVEAU : Animation des doigts
-                for (const finger in fingerJoints) {
-                    const {landmarks: lmIndices, bones: boneNames} = fingerJoints[finger];
-                    
-                    for (let i = 0; i < lmIndices.length - 1; i++) {
-                        const bone = bones[boneNames[i]];
-                        if (!bone) continue;
-                        
-                        const start = landmarks[lmIndices[i]];
-                        const end = landmarks[lmIndices[i + 1]];
-                        
-                        // Calcul de la direction entre les points
-                        const direction = new THREE.Vector3(
-                            end.x - start.x,
-                            -(end.y - start.y), // Inversion Y pour le repère Three.js
-                            end.z - start.z
-                        ).normalize();
-                        
-                        // Création de la rotation
-                        const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(
-                            new THREE.Vector3(0, 1, 0), // Orientation par défaut des bones
-                            direction
-                        );
-                        
-                        // Application avec interpolation
-                        bone.quaternion.slerp(targetQuaternion, lerpFactor);
-                    }
+                // Mise à jour des rotations des doigts
+                const fingerBones = {
+                    thumb: [
+                        { bone: 'thumb_01R_08', start: 2, end: 3 },
+                        { bone: 'thumb_02R_09', start: 3, end: 4 },
+                        { bone: 'thumb_03R_010', start: 4, end: 4 } // Pouce a moins de segments
+                    ],
+                    index: [
+                        { bone: 'index_01R_017', start: 5, end: 6 },
+                        { bone: 'index_02R_018', start: 6, end: 7 },
+                        { bone: 'index_03R_019', start: 7, end: 8 }
+                    ],
+                    middle: [
+                        { bone: 'middle_01R_025', start: 9, end: 10 },
+                        { bone: 'middle_02R_026', start: 10, end: 11 },
+                        { bone: 'middle_03R_027', start: 11, end: 12 }
+                    ],
+                    ring: [
+                        { bone: 'ring_01R_033', start: 13, end: 14 },
+                        { bone: 'ring_02R_034', start: 14, end: 15 },
+                        { bone: 'ring_03R_035', start: 15, end: 16 }
+                    ],
+                    pinky: [
+                        { bone: 'pinky_01R_041', start: 17, end: 18 },
+                        { bone: 'pinky_02R_042', start: 18, end: 19 },
+                        { bone: 'pinky_03R_043', start: 19, end: 20 }
+                    ]
+                };
+
+                // Fonction pour calculer la rotation d'un segment
+                function updateBoneRotation(boneName, startLandmark, endLandmark) {
+                    if (!bonesMap[boneName]) return;
+                    const start = landmarks[startLandmark];
+                    const end = landmarks[endLandmark];
+                    const vector = new THREE.Vector3(end.x - start.x, -(end.y - start.y), end.z - start.z).normalize();
+                    const bone = bonesMap[boneName];
+                    const boneDir = new THREE.Vector3(0, 1, 0); // Supposons que l'axe initial du bone est Y-up
+                    const quaternion = new THREE.Quaternion().setFromUnitVectors(boneDir, vector);
+                    bone.quaternion.slerp(quaternion, lerpFactor);
+                }
+
+                // Mettre à jour chaque doigt
+                for (const finger in fingerBones) {
+                    fingerBones[finger].forEach(segment => {
+                        updateBoneRotation(segment.bone, segment.start, segment.end);
+                    });
                 }
             }
         });
 
         // Caméra
-        const video = document.getElementById('video');
         const cameraMP = new Camera(video, {
             onFrame: async () => {
                 try {
