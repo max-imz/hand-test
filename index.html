@@ -87,7 +87,7 @@
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
 
-        // Quaternions pour les rotations globales
+        // Quaternions pour les rotations globales (inchangés)
         const initialRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0));
         const xRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
 
@@ -103,7 +103,7 @@
             if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                // Position (suivi du poignet)
+                // Position (suivi du poignet, inchangé)
                 const wrist = landmarks[0];
                 const palmX = (wrist.x - 0.5) * 6;
                 const palmY = -(wrist.y - 0.5) * 6;
@@ -112,7 +112,7 @@
                 handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
                 handModel.position.z = 0;
 
-                // Orientation complète de la paume
+                // Orientation complète de la paume (inchangée)
                 const indexBase = landmarks[5];
                 const pinkyBase = landmarks[17];
 
@@ -128,16 +128,15 @@
                 const matrix = new THREE.Matrix4().makeBasis(xDir, yDir, zDir);
                 const quaternion = new THREE.Quaternion().setFromRotationMatrix(matrix);
 
-                // Combiner la rotation dynamique, la rotation initiale et la rotation x
                 const finalQuaternion = quaternion.clone().multiply(initialRotation).multiply(xRotation);
                 handModel.quaternion.slerp(finalQuaternion, lerpFactor);
 
-                // Mise à jour des rotations des doigts
+                // Ajout : Mise à jour des rotations des doigts
                 const fingerBones = {
                     thumb: [
                         { bone: 'thumb_01R_08', start: 2, end: 3 },
                         { bone: 'thumb_02R_09', start: 3, end: 4 },
-                        { bone: 'thumb_03R_010', start: 4, end: 4 } // Pouce a moins de segments
+                        { bone: 'thumb_03R_010', start: 4, end: 4 }
                     ],
                     index: [
                         { bone: 'index_01R_017', start: 5, end: 6 },
@@ -161,7 +160,7 @@
                     ]
                 };
 
-                // Fonction pour calculer la rotation d'un segment
+                // Fonction pour calculer la rotation d'un segment de doigt
                 function updateBoneRotation(boneName, startLandmark, endLandmark) {
                     if (!bonesMap[boneName]) return;
                     const start = landmarks[startLandmark];
