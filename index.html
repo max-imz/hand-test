@@ -2,12 +2,11 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Suivi Doigts - Index en Temps Réel</title>
+    <title>Index Synchronisé 3D</title>
     <style>
-        body, html { margin: 0; padding: 0; overflow: hidden; background: #111; }
+        body, html { margin: 0; padding: 0; overflow: hidden; background-color: #111; }
         #container { width: 100vw; height: 100vh; }
-        #status { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 10px; }
+        #status { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.7); padding: 10px; }
     </style>
 </head>
 <body>
@@ -23,33 +22,39 @@
     <script>
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-        camera.position.z = 5;
+        camera.position.z = 3;
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('container').appendChild(renderer.domElement);
 
-        const loader = new THREE.GLTFLoader();
         let handModel, bones = {};
 
+        // Chargement du modèle hand.gltf
+        const loader = new THREE.GLTFLoader();
         loader.load('./hand.gltf', (gltf) => {
             handModel = gltf.scene;
             scene.add(handModel);
 
-            // Chercher les bones de l'index
+            // Identifier les bones de l'index
             handModel.traverse(obj => {
                 if (obj.isBone) {
-                    if (obj.name.includes("index_01")) bones.index01 = obj;
-                    if (obj.name.includes("index_02")) bones.index02 = obj;
-                    if (obj.name.includes("index_03")) bones.index03 = obj;
+                    if (obj.name === 'index_01R_017') bones.index1 = obj;
+                    if (obj.name === 'index_02R_018') bones.index2 = obj;
+                    if (obj.name === 'index_03R_019') bones.index3 = obj;
                 }
             });
 
-            document.getElementById('status').textContent = "Modèle prêt, montre ta main";
+            if (bones.index1 && bones.index2 && bones.index3) {
+                document.getElementById('status').textContent = "Prêt : bouge ton index !";
+            } else {
+                document.getElementById('status').textContent = "Erreur : Bones index manquants";
+            }
         }, undefined, (error) => {
-            console.error("Erreur de chargement :", error);
-            document.getElementById('status').textContent = "Erreur : Vérifie hand.gltf";
+            console.error("Erreur chargement modèle :", error);
+            document.getElementById('status').textContent = "Erreur chargement modèle";
         });
 
+        // MediaPipe Hands
         const hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
@@ -65,26 +70,28 @@
             if (results.multiHandLandmarks?.length > 0 && handModel) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                // Bouger l'index en fonction des landmarks MediaPipe
+                // Points MediaPipe de l'index
                 const joints = [
-                    landmarks[5],  // index MCP (base)
-                    landmarks[6],  // index PIP (milieu)
-                    landmarks[7],  // index DIP (avant-dernier)
-                    landmarks[8]   // index TIP (bout)
+                    landmarks[5],  // base MCP
+                    landmarks[6],  // PIP
+                    landmarks[7],  // DIP
+                    landmarks[8]   // TIP
                 ];
 
                 for (let i = 0; i < 3; i++) {
                     const start = joints[i];
-                    const end = joints[i + 1];
+                    const end = joints[i+1];
 
-                    const vecStart = new THREE.Vector3(start.x, -start.y, start.z);
-                    const vecEnd = new THREE.Vector3(end.x, -end.y, end.z);
+                    const startVec = new THREE.Vector3(start.x, -start.y, start.z);
+                    const endVec = new THREE.Vector3(end.x, -end.y, end.z);
 
-                    const dir = new THREE.Vector3().subVectors(vecEnd, vecStart).normalize();
-                    const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+                    const dir = new THREE.Vector3().subVectors(endVec, startVec).normalize();
+                    const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
 
-                    const bone = i === 0 ? bones.index01 : i === 1 ? bones.index02 : bones.index03;
-                    if (bone) bone.quaternion.slerp(quat, 0.5);
+                    const bone = i === 0 ? bones.index1 : i === 1 ? bones.index2 : bones.index3;
+                    if (bone) {
+                        bone.quaternion.slerp(quaternion, 0.5); // Doucement ou mets 1 pour direct
+                    }
                 }
             }
         });
@@ -95,13 +102,11 @@
                 await hands.send({ image: videoElement });
             },
             width: 640,
-            height: 480,
-            facingMode: 'user'
+            height: 480
         });
-
         cameraMP.start().catch(err => {
             console.error("Erreur caméra :", err);
-            document.getElementById('status').textContent = "Erreur : Autoriser la caméra";
+            document.getElementById('status').textContent = "Erreur caméra";
         });
 
         function animate() {
