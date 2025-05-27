@@ -91,18 +91,17 @@
         const initialRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0));
         const xRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
 
-        // Ajustement des paramètres de MediaPipe pour améliorer la détection
         hands.setOptions({
             maxNumHands: 1,
-            modelComplexity: 1, // Maximum pour la meilleure précision
-            minDetectionConfidence: 0.5, // Réduit pour détecter plus de landmarks
-            minTrackingConfidence: 0.5, // Réduit pour un suivi plus robuste
-            selfieMode: false // Test sans selfieMode pour éviter les inversions
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5,
+            selfieMode: false
         });
 
         // Tableau pour stocker les landmarks précédents (pour le lissage)
         let previousLandmarks = null;
-        const smoothingFactor = 0.7; // Facteur de lissage pour réduire le bruit
+        const smoothingFactor = 0.9; // Lissage agressif pour réduire le bruit
 
         hands.onResults((results) => {
             if (results.multiHandLandmarks?.length > 0 && handModel) {
@@ -116,13 +115,13 @@
                         landmarks[i].z = smoothingFactor * previousLandmarks[i].z + (1 - smoothingFactor) * landmarks[i].z;
                     }
                 }
-                previousLandmarks = landmarks.map(lm => ({ x: lm.x, y: lm.y, z: lm.z })); // Copie pour le prochain frame
+                previousLandmarks = landmarks.map(lm => ({ x: lm.x, y: lm.y, z: lm.z }));
 
                 // Position (suivi du poignet, inchangé)
                 const wrist = landmarks[0];
                 const palmX = (wrist.x - 0.5) * 6;
                 const palmY = -(wrist.y - 0.5) * 6;
-                const lerpFactor = 0.1; // Réduit pour plus de stabilité
+                const lerpFactor = 0.05; // Réduit pour plus de stabilité
                 handModel.position.x = THREE.MathUtils.lerp(handModel.position.x, palmX, lerpFactor);
                 handModel.position.y = THREE.MathUtils.lerp(handModel.position.y, palmY, lerpFactor);
                 handModel.position.z = 0;
@@ -175,25 +174,36 @@
                     ]
                 };
 
-                // Fonction pour calculer la rotation d'un segment de doigt avec contraintes
+                // Fonction pour calculer la rotation d'un segment de doigt avec contraintes renforcées
                 function updateBoneRotation(boneName, startLandmark, endLandmark) {
                     if (!bonesMap[boneName]) return;
                     const start = landmarks[startLandmark];
                     const end = landmarks[endLandmark];
+
+                    // Vérifier si les landmarks sont cohérents (distance raisonnable)
+                    const distance = Math.sqrt(
+                        Math.pow(end.x - start.x, 2) +
+                        Math.pow(end.y - start.y, 2) +
+                        Math.pow(end.z - start.z, 2)
+                    );
+                    if (distance < 0.01 || distance > 0.5) return; // Ignorer si la distance est incohérente
+
                     const vector = new THREE.Vector3(end.x - start.x, -(end.y - start.y), end.z - start.z).normalize();
                     const bone = bonesMap[boneName];
-                    const boneDir = new THREE.Vector3(0, 1, 0); // Test avec Y-up (ajustable si nécessaire)
+                    const boneDir = new THREE.Vector3(0, 1, 0); // Test avec Y-up (ajustable)
 
                     // Calculer le quaternion de rotation
                     const quaternion = new THREE.Quaternion().setFromUnitVectors(boneDir, vector);
 
                     // Convertir le quaternion en angles d'Euler pour appliquer des contraintes
                     const euler = new THREE.Euler().setFromQuaternion(quaternion, 'XYZ');
-                    
-                    // Limiter les angles pour éviter des rotations non naturelles
-                    euler.x = THREE.MathUtils.clamp(euler.x, -Math.PI / 4, Math.PI / 4); // ±45 degrés
-                    euler.y = THREE.MathUtils.clamp(euler.y, -Math.PI / 4, Math.PI / 4);
-                    euler.z = THREE.MathUtils.clamp(euler.z, -Math.PI / 4, Math.PI / 4);
+
+                    // Contraintes renforcées pour imiter les limites humaines
+                    // - Les doigts ne peuvent pas se plier en arrière (limite négative faible)
+                    // - Limite de flexion vers l'avant (vers la paume)
+                    euler.x = THREE.MathUtils.clamp(euler.x, -Math.PI / 6, Math.PI / 3); // ±30 degrés sur x
+                    euler.y = THREE.MathUtils.clamp(euler.y, -Math.PI / 6, Math.PI / 6); // ±30 degrés sur y
+                    euler.z = THREE.MathUtils.clamp(euler.z, -Math.PI / 6, Math.PI / 6); // ±30 degrés sur z
 
                     // Reconstruire le quaternion avec les angles limités
                     const constrainedQuaternion = new THREE.Quaternion().setFromEuler(euler);
@@ -209,7 +219,6 @@
                     });
                 }
             } else {
-                // Si aucune main n'est détectée, afficher un message
                 document.getElementById('status').textContent = "Aucune main détectée";
             }
         });
@@ -223,7 +232,7 @@
                     console.error("Erreur caméra :", e);
                 }
             },
-            width: 1280, // Augmentation de la résolution pour une meilleure détection
+            width: 1280,
             height: 720,
             facingMode: 'user'
         });
