@@ -3,30 +3,22 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Sync doigts main 3D avec MediaPipe</title>
+    <title>Inspecter Bones Hand.gltf</title>
     <style>
-        body, html { margin: 0; padding: 0; overflow: hidden; background: #111; }
+        body, html { margin: 0; padding: 0; overflow: hidden; background: #111; color: #fff; font-family: Arial; }
         #container { width: 100vw; height: 100vh; }
-        #status {
-            position: absolute; top: 10px; left: 10px; color: white;
-            background: rgba(0,0,0,0.7); padding: 10px; font-family: Arial;
-            z-index: 10;
-        }
+        #status { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 10px; z-index: 10; }
     </style>
 </head>
 <body>
     <div id="container"></div>
-    <div id="status">Initialisation...</div>
+    <div id="status">Chargement du modèle...</div>
     <video id="video" autoplay playsinline style="display:none;"></video>
 
-    <!-- Libs -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
     <script>
-        // Setup Three.js
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         camera.position.z = 5;
@@ -35,36 +27,21 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('container').appendChild(renderer.domElement);
 
-        // Light
-        const light = new THREE.DirectionalLight(0xffffff, 1.5);
-        light.position.set(2, 2, 2);
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-
-        // Loader GLTF
         const loader = new THREE.GLTFLoader();
         let handModel;
-        let indexBones = [];
-        const lerpFactor = 0.5;
 
         loader.load('./hand.gltf',
             (gltf) => {
                 handModel = gltf.scene;
                 scene.add(handModel);
-                document.getElementById('status').textContent = "Modèle chargé - Montrez votre main";
+                document.getElementById('status').textContent = "Modèle chargé, regarde la console pour les bones.";
 
-                // Trouver bones index
-                handModel.traverse((obj) => {
-                    if (obj.isBone && obj.name.toLowerCase().includes("index")) {
-                        indexBones.push(obj);
-                        console.log("Bone index trouvé :", obj.name);
+                console.log("=== Liste des bones dans hand.gltf ===");
+                handModel.traverse(obj => {
+                    if (obj.isBone) {
+                        console.log("Bone trouvé :", obj.name);
                     }
                 });
-
-                if (indexBones.length !== 4) {
-                    document.getElementById('status').textContent = "Erreur : Il faut 4 bones index";
-                    console.error("Bones index manquants ou trop nombreux");
-                }
             },
             undefined,
             (error) => {
@@ -73,78 +50,12 @@
             }
         );
 
-        // MediaPipe Hands
-        const video = document.getElementById('video');
-        const hands = new Hands({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-        });
-
-        hands.setOptions({
-            maxNumHands: 1,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.7,
-            minTrackingConfidence: 0.7,
-            selfieMode: true
-        });
-
-        hands.onResults((results) => {
-            if (results.multiHandLandmarks?.length > 0 && handModel && indexBones.length === 4) {
-                const landmarks = results.multiHandLandmarks[0];
-
-                // Position main (poignet)
-                const wrist = landmarks[0];
-                const palmX = (wrist.x - 0.5) * 6;
-                const palmY = -(wrist.y - 0.5) * 6;
-                handModel.position.x += (palmX - handModel.position.x) * lerpFactor;
-                handModel.position.y += (palmY - handModel.position.y) * lerpFactor;
-                handModel.position.z = 0;
-
-                // Bouger les bones index en fonction des landmarks (4 bones)
-                for (let i = 0; i < 4; i++) {
-                    const start = landmarks[5 + i];
-                    const end = landmarks[6 + i];
-
-                    const startV = new THREE.Vector3(start.x, -start.y, start.z);
-                    const endV = new THREE.Vector3(end.x, -end.y, end.z);
-                    const dir = new THREE.Vector3().subVectors(endV, startV).normalize();
-
-                    const bone = indexBones[i];
-
-                    // Axe local du bone supposé être Y (0,1,0)
-                    const boneDir = new THREE.Vector3(0, 1, 0);
-
-                    // Calcul quaternion pour rotation
-                    const quat = new THREE.Quaternion().setFromUnitVectors(boneDir, dir);
-
-                    // Appliquer interpolation
-                    bone.quaternion.slerp(quat, lerpFactor);
-                }
-            }
-        });
-
-        // Caméra MediaPipe
-        const cameraMP = new Camera(video, {
-            onFrame: async () => {
-                await hands.send({image: video});
-            },
-            width: 640,
-            height: 480,
-            facingMode: "user"
-        });
-
-        cameraMP.start().catch(e => {
-            console.error("Erreur démarrage caméra :", e);
-            document.getElementById('status').textContent = "Erreur : Autorisez la caméra";
-        });
-
-        // Animation Three.js
         function animate() {
             requestAnimationFrame(animate);
             renderer.render(scene, camera);
         }
         animate();
 
-        // Resize
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth/window.innerHeight;
             camera.updateProjectionMatrix();
